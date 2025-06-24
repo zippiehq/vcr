@@ -1,0 +1,11 @@
+{
+  "name": "@zippie/sample-python",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sample Python HTTP server with health endpoint",
+  "scripts": {
+    "build": "docker build -t sample-python .",
+    "run": "docker run -p 8080:8080 sample-python",
+    "test": "curl http://localhost:8080/health"
+  }
+} 
