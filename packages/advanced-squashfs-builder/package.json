@@ -1,0 +1,6 @@
+{
+  "name": "@zippie/advanced-squashfs-builder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Advanced squashfs builder using linuxkit/alpine and mksquashfs with deterministic options."
+} 
