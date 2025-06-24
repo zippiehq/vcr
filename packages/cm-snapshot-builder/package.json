@@ -1,0 +1,6 @@
+{
+  "name": "@zippie/cm-snapshot-builder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cartesi Machine snapshot builder with RISC-V toolchain and build tools."
+} 
