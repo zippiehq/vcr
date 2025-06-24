@@ -14,4 +14,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Env
-.env 
+.env
+
+# Editor backup files
+*~ 
