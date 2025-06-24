@@ -12,21 +12,21 @@ target "docker-platforms" {
 target "advanced-squashfs-builder" {
   inherits = ["docker-metadata-action", "docker-platforms"]
   context = "./packages/advanced-squashfs-builder"
-  dockerfile = "./packages/advanced-squashfs-builder/Dockerfile"
+  dockerfile = "Dockerfile"
   tags = ["ghcr.io/zippiehq/advanced-squashfs-builder:latest"]
 }
 
 target "cm-snapshot-builder" {
   inherits = ["docker-metadata-action", "docker-platforms"]
   context = "./packages/cm-snapshot-builder"
-  dockerfile = "./packages/cm-snapshot-builder/Dockerfile"
+  dockerfile = "Dockerfile"
   tags = ["ghcr.io/zippiehq/cm-snapshot-builder:latest"]
 }
 
 target "linuxkit-builder" {
   inherits = ["docker-metadata-action", "docker-platforms"]
   context = "./packages/linuxkit-builder"
-  dockerfile = "./packages/linuxkit-builder/Dockerfile"
+  dockerfile = "Dockerfile"
   tags = ["ghcr.io/zippiehq/linuxkit-builder:latest"]
 }
 
