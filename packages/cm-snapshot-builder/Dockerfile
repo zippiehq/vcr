@@ -11,7 +11,7 @@ RUN apt-get update && \
 
 WORKDIR /work
 
-# Download and verify Cartesi Linux kernel - note: this can be updated to 6.15.3
+# Download and verify Cartesi Linux kernel - note: this can be updated to non-cartesi 6.15.3
 RUN mkdir -p dep && \
     wget -O dep/linux-6.5.13-ctsi-1.tar.gz https://github.com/cartesi/linux/archive/refs/tags/v6.5.13-ctsi-1.tar.gz && \
     echo "24f3326aad2aa630c6fb2192305b70963ca67c03b0218cdcd09033cbefc9e52d  dep/linux-6.5.13-ctsi-1.tar.gz" | sha256sum -c
@@ -53,6 +53,8 @@ RUN apt-get update && \
     apt-get install --no-install-recommends -y \
         lua5.4 \
         libslirp0 \
+        squashfs-tools \
+        cryptsetup \
         wget \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
