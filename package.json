@@ -1,18 +1,6 @@
 {
-  "name": "@zippie/vcr",
+  "name": "vcr-monorepo",
+  "private": true,
   "version": "0.1.0",
-  "description": "Verifiable Container Runner CLI",
-  "bin": {
-    "vcr": "dist/cli.js"
-  },
-  "scripts": {
-    "build": "tsc",
-    "start": "node dist/cli.js"
-  },
-  "author": "Zippie",
-  "license": "MIT",
-  "dependencies": {},
-  "devDependencies": {
-    "typescript": "^5.0.0"
-  }
+  "description": "Monorepo for Zippie VCR and related packages"
 } 
