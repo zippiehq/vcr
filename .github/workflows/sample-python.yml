@@ -1,0 +1,49 @@
+name: Build Sample Python
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+    paths:
+      - 'packages/sample-python/**'
+  pull_request:
+    branches:
+      - '*'
+    paths:
+      - 'packages/sample-python/**'
+
+jobs:
+  build:
+    name: Build and Test Sample Python
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          cd packages/sample-python
+          docker build -t sample-python .
+
+      - name: Test Docker image
+        run: |
+          cd packages/sample-python
+          # Start container in background
+          docker run -d --name test-sample-python -p 8080:8080 sample-python
+          
+          # Wait for container to start
+          sleep 5
+          
+          # Test health endpoint
+          curl -f http://localhost:8080/health
+          
+          # Stop and remove container
+          docker stop test-sample-python
+          docker rm test-sample-python
+
+      - name: Test Python syntax
+        run: |
+          cd packages/sample-python
+          python3 -m py_compile app.py 
