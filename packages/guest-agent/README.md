@@ -33,7 +33,7 @@ The main application provides:
 
 ### Docker Build (Recommended)
 ```bash
-docker build -t vcr-guest-agent .
+docker build -t guest-agent .
 ```
 
 ### Native Cross-compilation

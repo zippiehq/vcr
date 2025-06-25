@@ -61,5 +61,5 @@ ENTRYPOINT []
 CMD []
 WORKDIR /
 COPY --from=mirror /out/ /
-COPY --from=builder /app/target/riscv64gc-unknown-linux-musl/release/vcr-guest-agent /bin/vcr-guest-agent
-CMD ["/bin/vcr-guest-agent"] 
+COPY --from=builder /app/target/riscv64gc-unknown-linux-musl/release/guest-agent /bin/guest-agent
+CMD ["/bin/guest-agent"] 
