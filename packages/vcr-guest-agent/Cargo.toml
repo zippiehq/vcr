@@ -1,0 +1,15 @@
+[package]
+name = "vcr-guest-agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cmio = { path = "crates/cmio" }
+libc = "0.2"
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.10"
+
+[[bin]]
+name = "vcr-guest-agent"
+path = "src/main.rs" 

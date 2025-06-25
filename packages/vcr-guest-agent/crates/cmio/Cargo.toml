@@ -1,0 +1,13 @@
+[package]
+name = "cmio"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+thiserror = "1.0"
+nix = "0.27"
+
+[lib]
+name = "cmio"
+path = "src/lib.rs" 
