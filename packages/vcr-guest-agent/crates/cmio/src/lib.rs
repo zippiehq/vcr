@@ -1,6 +1,7 @@
 use libc::{c_int, c_ulong, c_void, ioctl, mmap, munmap, open, close, O_RDWR, PROT_READ, PROT_WRITE, MAP_SHARED, MAP_FAILED};
 use std::ptr;
 use thiserror::Error;
+use std::path::Path;
 
 #[derive(Error, Debug)]
 pub enum CmioError {
@@ -182,6 +183,11 @@ impl Drop for CmioIoDriver {
             close(self.fd);
         }
     }
+}
+
+/// Check if /dev/cmio device exists
+pub fn is_cmio_device_present() -> bool {
+    Path::new("/dev/cmio").exists()
 }
 
 #[cfg(test)]
