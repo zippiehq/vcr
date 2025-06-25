@@ -46,7 +46,7 @@ WORKDIR /app
 # Copy source files
 COPY . .
 
-RUN cargo build --target riscv64gc-unknown-linux-musl --release
+RUN cd /app/packages/guest-agent && cargo build --target riscv64gc-unknown-linux-musl --release
 
 FROM linuxkit/alpine:35b33c6b03c40e51046c3b053dd131a68a26c37a AS mirror
 RUN mkdir -p /out/etc/apk && cp -r /etc/apk/* /out/etc/apk/
@@ -66,8 +66,8 @@ ENTRYPOINT []
 CMD []
 WORKDIR /
 COPY --from=mirror /out/ /
-COPY --from=builder /app/target/riscv64gc-unknown-linux-musl/release/guest-agent /bin/guest-agent
+COPY --from=builder /app/packages/guest-agent/target/riscv64gc-unknown-linux-musl/release/guest-agent /bin/guest-agent
 COPY --from=builder /build/oyster-monorepo/networking/tcp-proxy/target/riscv64gc-unknown-linux-musl/release/vsock-to-ip /bin/vsock-to-ip
 COPY --from=builder /build/oyster-monorepo/networking/tcp-proxy/target/riscv64gc-unknown-linux-musl/release/ip-to-vsock /bin/ip-to-vsock
-COPY ./entrypoint.sh /entrypoint.sh
+COPY ./packages/guest-agent/entrypoint.sh /entrypoint.sh
 CMD ["/entrypoint.sh"] 

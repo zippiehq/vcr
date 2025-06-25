@@ -1,10 +1,9 @@
 use cmio::CmioIoDriver;
 use colored::*;
 use env_logger::Builder;
-use guest_agent::run_agent;
+use host_agent::run_agent;
 use log::{error, info, LevelFilter};
 use std::io::Write;
-use std::process;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -22,17 +21,15 @@ fn main() {
                 "{} [{}] - {}",
                 timestamp,
                 level,
-                message.to_string().green()
+                message.to_string().blue()
             )
         })
         .filter(None, LevelFilter::Info)
         .init();
 
-    info!("Starting Guest Agent");
+    info!("Starting host agent");
     let driver = Arc::new(Mutex::new(CmioIoDriver::new().unwrap()));
-
     if let Err(e) = run_agent(driver) {
-        error!("Agent failed: {}", e);
-        process::exit(1);
+        error!("Host agent exited with error: {}", e);
     }
 }

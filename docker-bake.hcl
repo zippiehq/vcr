@@ -31,8 +31,8 @@ target "vcr-kernels" {
 
 target "guest-agent" {
   inherits = ["docker-metadata-action", "docker-platforms-riscv64-only"]
-  context = "./packages/guest-agent"
-  dockerfile = "Dockerfile"
+  context = "."
+  dockerfile = "./packages/guest-agent/Dockerfile"
   tags = ["ghcr.io/zippiehq/vcr-guest-agent:latest"]
 }
 

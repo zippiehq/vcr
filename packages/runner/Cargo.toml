@@ -1,0 +1,13 @@
+[package]
+name = "runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+host-agent = { path = "../host-agent" }
+guest-agent = { path = "../guest-agent" }
+tokio = { version = "1", features = ["full"] }
+log = "0.4.21"
+env_logger = "0.11.3"
+colored = "2.1.0"
+cmio = { path = "../guest-agent/crates/cmio", features = ["mock_cmio"] }
