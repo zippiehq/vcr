@@ -42,6 +42,25 @@ function generateDockerCompose(imageName: string) {
   const composeConfig = {
     version: '3.8',
     services: {
+      traefik: {
+        image: 'traefik:v2.10',
+        container_name: 'vcr-traefik',
+        command: [
+          '--api.insecure=true',
+          '--providers.docker=true',
+          '--providers.docker.exposedbydefault=false',
+          '--entrypoints.web.address=:8080'
+        ],
+        ports: ['8080:8080'],
+        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
+        networks: ['internal_net', 'external_net'],
+        labels: [
+          'traefik.enable=true',
+          'traefik.http.routers.traefik.rule=Host(`localhost`) && PathPrefix(`/api`) || PathPrefix(`/dashboard`)',
+          'traefik.http.routers.traefik.service=api@internal',
+          'traefik.http.routers.traefik.entrypoints=web'
+        ]
+      },
       isolated_service: {
         image: imageName,
         container_name: 'vcr-isolated-service',
@@ -53,7 +72,13 @@ function generateDockerCompose(imageName: string) {
           retries: 3,
           start_period: '40s'
         },
-        ports: ['8080:8080']
+        labels: [
+          'traefik.enable=true',
+          'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
+          'traefik.http.routers.isolated.entrypoints=web',
+          'traefik.http.services.isolated.loadbalancer.server.port=8080',
+          'traefik.http.services.isolated.loadbalancer.server.scheme=http'
+        ]
       },
       internet_service: {
         image: 'alpine',
@@ -100,8 +125,9 @@ function runDevEnvironment() {
     execSync(waitCommand, { stdio: 'inherit' });
     
     console.log('\nDevelopment environment is ready!');
-    console.log('- Isolated service: http://localhost:8080');
-    console.log('- Health check: http://localhost:8080/health');
+    console.log('- Traefik Dashboard: http://localhost:8080/dashboard/');
+    console.log('- Function endpoint: http://localhost:8080/function');
+    console.log('- Health check: http://localhost:8080/function/health');
     console.log('- To stop: docker compose -f docker-compose.dev.json down');
     console.log('- To view logs: docker compose -f docker-compose.dev.json logs -f');
     
