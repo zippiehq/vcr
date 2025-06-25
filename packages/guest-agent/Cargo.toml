@@ -11,5 +11,5 @@ log = "0.4"
 env_logger = "0.10"
 
 [[bin]]
-name = "vcr-guest-agent"
+name = "guest-agent"
 path = "src/main.rs" 

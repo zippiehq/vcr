@@ -68,6 +68,7 @@ RUN wget -O /tmp/machine-emulator.deb https://github.com/cartesi/machine-emulato
     rm /tmp/machine-emulator.deb
 
 COPY --from=0 /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin /usr/share/cartesi-machine/images/linux.bin
+COPY --from=0 /work/linux/.config /usr/share/cartesi-machine/images/linux.bin.config
 
 WORKDIR /artifacts
 

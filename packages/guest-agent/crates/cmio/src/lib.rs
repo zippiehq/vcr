@@ -177,6 +177,28 @@ impl CmioIoDriver {
     pub fn rx_len(&self) -> usize {
         self.rx_len
     }
+    
+    /// Send data via CMIO and receive a response
+    pub fn send_cmio(&mut self, tx_data: &[u8], domain: u16) -> Result<Vec<u8>> {
+        if tx_data.len() > self.tx_len() {
+            return Err(CmioError::InvalidArgument);
+        }
+        // Write to TX buffer
+        let tx_buf = self.tx_slice_mut();
+        tx_buf[..tx_data.len()].copy_from_slice(tx_data);
+        // Prepare yield
+        let mut yield_data = CmioYield {
+            dev: HTIF_DEVICE_YIELD,
+            cmd: HTIF_YIELD_CMD_MANUAL,
+            reason: domain,
+            data: tx_data.len() as u32,
+        };
+        self.yield_control(&mut yield_data)?;
+        // Copy RX buffer
+        let rx_buf = self.rx_slice();
+        let rx_vec = rx_buf[..self.rx_len()].to_vec();
+        Ok(rx_vec)
+    }
 }
 
 impl Drop for CmioIoDriver {
@@ -193,6 +215,14 @@ impl Drop for CmioIoDriver {
 pub fn is_cmio_device_present() -> bool {
     Path::new("/dev/cmio").exists()
 }
+
+// HTIF Device constants
+const HTIF_DEVICE_YIELD: u8 = 2;
+// HTIF Commands
+const HTIF_YIELD_CMD_AUTOMATIC: u8 = 0;
+const HTIF_YIELD_CMD_MANUAL: u8 = 1;
+// HTIF Automatic reasons
+const HTIF_YIELD_AUTOMATIC_REASON_TX_REPORT: u16 = 4;
 
 #[cfg(test)]
 mod tests {
