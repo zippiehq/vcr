@@ -1,4 +1,5 @@
-use libc::{c_int, c_ulong, c_void, ioctl, mmap, munmap, open, close, O_RDWR, PROT_READ, PROT_WRITE, MAP_SHARED, MAP_FAILED};
+use libc::{c_int, c_void, mmap, munmap, open, close, O_RDWR, PROT_READ, PROT_WRITE, MAP_SHARED, MAP_FAILED, c_char};
+use nix::{ioctl_read, ioctl_readwrite};
 use std::ptr;
 use thiserror::Error;
 use std::path::Path;
@@ -15,9 +16,9 @@ pub enum CmioError {
 
 pub type Result<T> = std::result::Result<T, CmioError>;
 
-// IOCTL definitions - manual construction
-const IOCTL_CMIO_SETUP: u64 = (0xd3 << 8) | 0;
-const IOCTL_CMIO_YIELD: u64 = (0xd3 << 8) | 1;
+// IOCTL definitions using nix macros for cross-platform compatibility
+ioctl_read!(cmio_setup, 0xd3, 0, CmioSetup);
+ioctl_readwrite!(cmio_yield, 0xd3, 1, u64);
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -54,7 +55,7 @@ pub struct CmioIoDriver {
 impl CmioIoDriver {
     /// Initialize the CMIO driver
     pub fn new() -> Result<Self> {
-        let fd = unsafe { open(b"/dev/cmio\0".as_ptr() as *const i8, O_RDWR) };
+        let fd = unsafe { open(b"/dev/cmio\0".as_ptr() as *const c_char, O_RDWR) };
         
         if fd < 0 {
             return Err(CmioError::IoError(std::io::Error::last_os_error()));
@@ -65,7 +66,8 @@ impl CmioIoDriver {
             rx: CmioBuffer { data: 0, length: 0 },
         };
         
-        if unsafe { ioctl(fd, IOCTL_CMIO_SETUP as c_ulong, &mut setup) } != 0 {
+        // Use nix ioctl macro
+        if unsafe { cmio_setup(fd, &mut setup) }.is_err() {
             let err = std::io::Error::last_os_error();
             unsafe { close(fd) };
             return Err(CmioError::IoError(err));
@@ -122,12 +124,14 @@ impl CmioIoDriver {
         }
         
         let req = Self::pack(yield_data);
+        let mut response = req;
         
-        if unsafe { ioctl(self.fd, IOCTL_CMIO_YIELD as c_ulong, &req) } != 0 {
+        // Use nix ioctl macro
+        if unsafe { cmio_yield(self.fd, &mut response) }.is_err() {
             return Err(CmioError::IoError(std::io::Error::last_os_error()));
         }
         
-        *yield_data = Self::unpack(req);
+        *yield_data = Self::unpack(response);
         Ok(())
     }
     
