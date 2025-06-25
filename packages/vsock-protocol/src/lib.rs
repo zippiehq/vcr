@@ -1,0 +1,68 @@
+use std::convert::TryInto;
+use std::mem;
+
+/// The header for a virtio vsock packet.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct VirtioVsockHdr {
+    pub src_cid: u32,
+    pub dst_cid: u32,
+    pub src_port: u32,
+    pub dst_port: u32,
+    pub len: u32,
+    pub type_: u16,
+    pub op: u16,
+    pub flags: u32,
+    pub buf_alloc: u32,
+    pub fwd_cnt: u32,
+}
+
+pub const VSOCK_TYPE_STREAM: u16 = 1;
+pub const VSOCK_OP_RW: u16 = 5;
+pub const HDR_SIZE: usize = mem::size_of::<VirtioVsockHdr>();
+
+impl VirtioVsockHdr {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(HDR_SIZE);
+        bytes.extend_from_slice(&self.src_cid.to_le_bytes());
+        bytes.extend_from_slice(&self.dst_cid.to_le_bytes());
+        bytes.extend_from_slice(&self.src_port.to_le_bytes());
+        bytes.extend_from_slice(&self.dst_port.to_le_bytes());
+        bytes.extend_from_slice(&self.len.to_le_bytes());
+        bytes.extend_from_slice(&self.type_.to_le_bytes());
+        bytes.extend_from_slice(&self.op.to_le_bytes());
+        bytes.extend_from_slice(&self.flags.to_le_bytes());
+        bytes.extend_from_slice(&self.buf_alloc.to_le_bytes());
+        bytes.extend_from_slice(&self.fwd_cnt.to_le_bytes());
+        bytes
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < HDR_SIZE {
+            return None;
+        }
+
+        let src_cid = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        let dst_cid = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+        let src_port = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+        let dst_port = u32::from_le_bytes(bytes[12..16].try_into().unwrap());
+        let len = u32::from_le_bytes(bytes[16..20].try_into().unwrap());
+        let type_ = u16::from_le_bytes(bytes[20..22].try_into().unwrap());
+        let op = u16::from_le_bytes(bytes[22..24].try_into().unwrap());
+        let flags = u32::from_le_bytes(bytes[24..28].try_into().unwrap());
+        let buf_alloc = u32::from_le_bytes(bytes[28..32].try_into().unwrap());
+        let fwd_cnt = u32::from_le_bytes(bytes[32..36].try_into().unwrap());
+
+        Some(VirtioVsockHdr {
+            src_cid,
+            dst_cid,
+            src_port,
+            dst_port,
+            len,
+            type_,
+            op,
+            flags,
+            buf_alloc,
+            fwd_cnt,
+        })
+    }
+} 

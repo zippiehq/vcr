@@ -3,6 +3,9 @@ name = "cmio"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+mock_cmio = []
+
 [dependencies]
 libc = "0.2"
 thiserror = "1.0"

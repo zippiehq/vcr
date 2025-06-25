@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cmio = { path = "crates/cmio" }
+cmio = { path = "crates/cmio", features = ["mock_cmio"] }
 libc = "0.2"
 thiserror = "1.0"
 log = "0.4"
 env_logger = "0.10"
+tokio = { version = "1", features = ["full"] }
+tokio-vsock = "0.7.1"
+vsock-protocol = { path = "../vsock-protocol" }
 
 [[bin]]
 name = "guest-agent"
