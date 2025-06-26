@@ -563,7 +563,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string) {
         '-w', '/work',
         'ghcr.io/zippiehq/vcr-snapshot-builder',
         'bash', '-c',
-        'cartesi-machine --flash-drive="label:root,filename:/work/minimal.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/work/minimal-cartesi-machine-snapshot'
+        'rm -rf /work/minimal-cartesi-machine-snapshot && cartesi-machine --flash-drive="label:root,filename:/work/minimal.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/work/minimal-cartesi-machine-snapshot'
       ];
       
       console.log(`Executing: ${cartesiCommand.join(' ')}`);
@@ -599,6 +599,28 @@ function buildLinuxKitImage(yamlPath: string, profile: string) {
       }
       
       console.log('✅ Compressed Cartesi machine snapshot created successfully');
+      
+      console.log('Creating verity hash tree...');
+      const verityCommand = [
+        'docker', 'run', '--rm',
+        '-v', `${currentDir}:/work`,
+        '-w', '/work',
+        'ghcr.io/zippiehq/vcr-snapshot-builder',
+        'bash', '-c',
+        'veritysetup --root-hash-file /work/minimal-cartesi-machine-snapshot.squashfs.root-hash format /work/minimal-cartesi-machine-snapshot.squashfs /work/minimal-cartesi-machine-snapshot.squashfs.verity'
+      ];
+      
+      console.log(`Executing: ${verityCommand.join(' ')}`);
+      const verityResult = spawnSync(verityCommand[0], verityCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+      
+      if (verityResult.status !== 0) {
+        console.error('Verity setup command failed with output:');
+        if (verityResult.stdout) console.error('stdout:', verityResult.stdout.toString());
+        if (verityResult.stderr) console.error('stderr:', verityResult.stderr.toString());
+        throw new Error(`Verity setup command failed with status ${verityResult.status}`);
+      }
+      
+      console.log('✅ Verity hash tree created successfully');
     }
     
   } catch (err) {
