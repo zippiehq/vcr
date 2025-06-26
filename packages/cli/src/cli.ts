@@ -241,6 +241,13 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
     execSync(buildCommand, { stdio: 'inherit', cwd: currentDir });
     console.log(`\n✅ Build completed successfully!`);
     console.log(`Image pushed to: localhost:5001/${imageTag}`);
+    
+    // For test profile, also build LinuxKit image
+    if (profile === 'test') {
+      console.log('\n🔄 Building LinuxKit image for test profile...');
+      const yamlPath = generateLinuxKitYaml(imageTag);
+      buildLinuxKitImage(yamlPath);
+    }
   } catch (err) {
     console.error('Error building image:', err);
     process.exit(1);
@@ -516,6 +523,67 @@ insecure = true
   } catch (err) {
     console.error('Error creating BuildKit config:', err);
     return null;
+  }
+}
+
+function generateLinuxKitYaml(imageTag: string) {
+  const yamlConfig = `kernel:
+  image: localhost:5001/linuxkit/kernel:6.6.71
+  cmdline: "console=tty0 console=ttyS0 console=ttyAMA0"
+init:
+  - localhost:5001/linuxkit/init:8eea386739975a43af558eec757a7dcb3a3d2e7b
+  - localhost:5001/linuxkit/runc:667e7ea2c426a2460ca21e3da065a57dbb3369c9
+  - localhost:5001/linuxkit/containerd:a988a1a8bcbacc2c0390ca0c08f949e2b4b5915d
+onboot:
+  - name: dhcpcd
+    image: localhost:5001/linuxkit/dhcpcd:157df9ef45a035f1542ec2270e374f18efef98a5
+    command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
+services:
+  - name: getty
+    image: localhost:5001/linuxkit/getty:05eca453695984a69617f1f1f0bcdae7f7032967
+    env:
+     - INSECURE=true
+  - name: app
+    image: localhost:5001/${imageTag}
+`;
+  
+  const yamlPath = join(cwd(), 'minimal.yml');
+  writeFileSync(yamlPath, yamlConfig);
+  console.log(`Generated LinuxKit YAML: ${yamlPath}`);
+  return yamlPath;
+}
+
+function buildLinuxKitImage(yamlPath: string) {
+  console.log('Building LinuxKit image...');
+  
+  const currentDir = cwd();
+  const imageName = process.env.LINUXKIT_IMAGE || 'linuxkit-builder:1.0';
+  
+  console.log(`Using LinuxKit image: ${imageName}`);
+  console.log(`Working directory: ${currentDir}`);
+  
+  try {
+    const command = [
+      'docker', 'run', '--rm',
+      '--network', 'host',
+      '-v', `${currentDir}:/work`,
+      '-v', '/var/run/docker.sock:/var/run/docker.sock',
+      '-w', '/work',
+      imageName,
+      'build', '--format', 'kernel+squashfs', '--arch', 'riscv64', '--decompress-kernel', 'minimal.yml'
+    ].join(' ');
+    
+    console.log(`Executing: ${command}`);
+    execSync(command, { stdio: 'inherit', cwd: currentDir });
+    
+    console.log('✅ LinuxKit image built successfully');
+    console.log('Generated files:');
+    console.log('- minimal-kernel');
+    console.log('- minimal-squashfs.img');
+    
+  } catch (err) {
+    console.error('Error building LinuxKit image:', err);
+    process.exit(1);
   }
 }
 
