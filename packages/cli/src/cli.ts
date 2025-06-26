@@ -483,10 +483,7 @@ insecure = true
 }
 
 function generateLinuxKitYaml(imageTag: string) {
-  const yamlConfig = `kernel:
-  image: ghcr.io/zippiehq/vcr-kernel:6.6.71
-  cmdline: "console=tty0 console=ttyS0 console=ttyAMA0"
-init:
+  const yamlConfig = `init:
   - ghcr.io/zippiehq/vcr-init:8eea386739975a43af558eec757a7dcb3a3d2e7b
   - ghcr.io/zippiehq/vcr-runc:667e7ea2c426a2460ca21e3da065a57dbb3369c9
   - ghcr.io/zippiehq/vcr-containerd:a988a1a8bcbacc2c0390ca0c08f949e2b4b5915d
@@ -526,17 +523,13 @@ function buildLinuxKitImage(yamlPath: string) {
       '-v', '/var/run/docker.sock:/var/run/docker.sock',
       '-w', '/work',
       imageName,
-      'build', '--format', 'kernel+squashfs', '--arch', 'riscv64', '--decompress-kernel', 'minimal.yml'
+      'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', 'minimal.yml'
     ].join(' ');
     
     console.log(`Executing: ${command}`);
     execSync(command, { stdio: 'inherit', cwd: currentDir });
     
-    console.log('✅ LinuxKit image built successfully');
-    console.log('Generated files:');
-    console.log('- minimal-kernel');
-    console.log('- minimal-squashfs.img');
-    
+    console.log('✅ LinuxKit image built successfully');    
   } catch (err) {
     console.error('Error building LinuxKit image:', err);
     process.exit(1);

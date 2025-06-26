@@ -22,8 +22,14 @@ RUN wget -O dep/opensbi-1.3.1-ctsi-2.tar.gz https://github.com/cartesi/opensbi/a
 
 # Extract Linux kernel
 RUN tar xzf dep/linux-6.5.13-ctsi-1.tar.gz \
+  --strip-components=1 --one-top-level=linux
+
+RUN mv linux linux-2
+RUN tar xzf dep/linux-6.5.13-ctsi-1.tar.gz \
   --strip-components=1 --one-top-level=linux && \
   rm dep/linux-6.5.13-ctsi-1.tar.gz
+
+
 
 # Extract OpenSBI
 RUN tar xzf dep/opensbi-1.3.1-ctsi-2.tar.gz \
@@ -37,6 +43,17 @@ COPY kernel-config linux/.config
 WORKDIR /work/linux
 RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
     ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) olddefconfig
+
+RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
+    ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
+
+# Build kernel with deterministic timestamps
+WORKDIR /work/linux-2
+RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
+    ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) defconfig
+
+RUN echo "CONFIG_RISCV_SBI_V01=y" >> .config
+#RUN diff -ru /work/linux/.config /work/linux-2/.config
 
 RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
     ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
@@ -56,6 +73,7 @@ RUN apt-get update && \
         squashfs-tools \
         cryptsetup \
         wget \
+        qemu-system-misc \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
@@ -69,7 +87,7 @@ RUN wget -O /tmp/machine-emulator.deb https://github.com/cartesi/machine-emulato
 
 COPY --from=0 /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin /usr/share/cartesi-machine/images/linux.bin
 COPY --from=0 /work/linux/.config /usr/share/cartesi-machine/images/linux.bin.config
-
-WORKDIR /artifacts
+COPY --from=0 /work/linux-2/arch/riscv/boot/Image /usr/share/qemu/images/linux-riscv64-Image
+COPY --from=0 /work/linux-2/.config /usr/share/qemu/images/linux-riscv64-Image.config
 
 CMD ["/bin/bash"] 
