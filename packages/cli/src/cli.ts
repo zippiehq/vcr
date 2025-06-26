@@ -528,19 +528,19 @@ insecure = true
 
 function generateLinuxKitYaml(imageTag: string) {
   const yamlConfig = `kernel:
-  image: localhost:5001/linuxkit/kernel:6.6.71
+  image: ghcr.io/zippiehq/vcr-kernel:6.6.71
   cmdline: "console=tty0 console=ttyS0 console=ttyAMA0"
 init:
-  - localhost:5001/linuxkit/init:8eea386739975a43af558eec757a7dcb3a3d2e7b
-  - localhost:5001/linuxkit/runc:667e7ea2c426a2460ca21e3da065a57dbb3369c9
-  - localhost:5001/linuxkit/containerd:a988a1a8bcbacc2c0390ca0c08f949e2b4b5915d
+  - ghcr.io/zippiehq/vcr-init:8eea386739975a43af558eec757a7dcb3a3d2e7b
+  - ghcr.io/zippiehq/vcr-runc:667e7ea2c426a2460ca21e3da065a57dbb3369c9
+  - ghcr.io/zippiehq/vcr-containerd:a988a1a8bcbacc2c0390ca0c08f949e2b4b5915d
 onboot:
   - name: dhcpcd
-    image: localhost:5001/linuxkit/dhcpcd:157df9ef45a035f1542ec2270e374f18efef98a5
+    image: ghcr.io/zippiehq/vcr-dhcpcd:157df9ef45a035f1542ec2270e374f18efef98a5
     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
 services:
   - name: getty
-    image: localhost:5001/linuxkit/getty:05eca453695984a69617f1f1f0bcdae7f7032967
+    image: ghcr.io/zippiehq/vcr-getty:05eca453695984a69617f1f1f0bcdae7f7032967
     env:
      - INSECURE=true
   - name: app
