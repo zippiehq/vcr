@@ -240,7 +240,7 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
     verifyRegistryConnectivity();
     execSync(buildCommand, { stdio: 'inherit', cwd: currentDir });
     console.log(`\n✅ Build completed successfully!`);
-    console.log(`Image pushed to: ${fullImageName}`);
+    console.log(`Image pushed to: localhost:5001/${imageTag}`);
   } catch (err) {
     console.error('Error building image:', err);
     process.exit(1);
