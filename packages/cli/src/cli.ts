@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { cwd } from 'process';
 import { join } from 'path';
 import { writeFileSync, existsSync, unlinkSync } from 'fs';
@@ -233,11 +233,11 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
     console.log(`\n✅ Build completed successfully!`);
     console.log(`Image pushed to: localhost:5001/${imageTag}`);
     
-    // For test profile, also build LinuxKit image
-    if (profile === 'test') {
-      console.log('\n🔄 Building LinuxKit image for test profile...');
+    // For test and prod profiles, also build LinuxKit image
+    if (profile === 'test' || profile === 'prod') {
+      console.log(`\n🔄 Building LinuxKit image for ${profile} profile...`);
       const yamlPath = generateLinuxKitYaml(imageTag);
-      buildLinuxKitImage(yamlPath);
+      buildLinuxKitImage(yamlPath, profile);
     }
   } catch (err) {
     console.error('Error building image:', err);
@@ -506,7 +506,7 @@ services:
   return yamlPath;
 }
 
-function buildLinuxKitImage(yamlPath: string) {
+function buildLinuxKitImage(yamlPath: string, profile: string) {
   console.log('Building LinuxKit image...');
   
   const currentDir = cwd();
@@ -524,12 +524,83 @@ function buildLinuxKitImage(yamlPath: string) {
       '-w', '/work',
       imageName,
       'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', 'minimal.yml'
-    ].join(' ');
+    ];
     
-    console.log(`Executing: ${command}`);
-    execSync(command, { stdio: 'inherit', cwd: currentDir });
+    console.log(`Executing: ${command.join(' ')}`);
+    execSync(command.join(' '), { stdio: 'inherit', cwd: currentDir });
     
-    console.log('✅ LinuxKit image built successfully');    
+    console.log('✅ LinuxKit image built successfully');
+    
+    // Start snapshot builder to create squashfs
+    console.log('Creating squashfs from minimal.tar...');
+    const snapshotCommand = [
+      'docker', 'run', '--rm',
+      '-v', `${currentDir}:/work`,
+      '-w', '/work',
+      'ghcr.io/zippiehq/vcr-snapshot-builder',
+      'bash', '-c',
+      'rm -f /work/minimal.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /work/minimal.squashfs -tar -noI -noId -noD -noF -noX < /work/minimal.tar && cp /usr/share/qemu/images/linux-riscv64-Image /work/minimal.qemu-kernel'
+    ];
+    
+    console.log(`Executing: ${snapshotCommand.join(' ')}`);
+    const result = spawnSync(snapshotCommand[0], snapshotCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+    
+    if (result.status !== 0) {
+      console.error('Command failed with output:');
+      if (result.stdout) console.error('stdout:', result.stdout.toString());
+      if (result.stderr) console.error('stderr:', result.stderr.toString());
+      throw new Error(`Command failed with status ${result.status}`);
+    }
+    
+    console.log('✅ Squashfs created successfully');
+    
+    // Additional steps for prod profile
+    if (profile === 'prod') {
+      console.log('Creating Cartesi machine snapshot...');
+      const cartesiCommand = [
+        'docker', 'run', '--rm',
+        '-v', `${currentDir}:/work`,
+        '-w', '/work',
+        'ghcr.io/zippiehq/vcr-snapshot-builder',
+        'bash', '-c',
+        'cartesi-machine --flash-drive="label:root,filename:/work/minimal.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/work/minimal-cartesi-machine-snapshot'
+      ];
+      
+      console.log(`Executing: ${cartesiCommand.join(' ')}`);
+      const cartesiResult = spawnSync(cartesiCommand[0], cartesiCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+      
+      if (cartesiResult.status !== 0) {
+        console.error('Cartesi machine command failed with output:');
+        if (cartesiResult.stdout) console.error('stdout:', cartesiResult.stdout.toString());
+        if (cartesiResult.stderr) console.error('stderr:', cartesiResult.stderr.toString());
+        throw new Error(`Cartesi machine command failed with status ${cartesiResult.status}`);
+      }
+      
+      console.log('✅ Cartesi machine snapshot created successfully');
+      
+      console.log('Creating compressed Cartesi machine snapshot...');
+      const compressCommand = [
+        'docker', 'run', '--rm',
+        '-v', `${currentDir}:/work`,
+        '-w', '/work',
+        'ghcr.io/zippiehq/vcr-snapshot-builder',
+        'bash', '-c',
+        'SOURCE_DATE_EPOCH=0 mksquashfs /work/minimal-cartesi-machine-snapshot /work/minimal-cartesi-machine-snapshot.squashfs -comp zstd -reproducible'
+      ];
+      
+      console.log(`Executing: ${compressCommand.join(' ')}`);
+      const compressResult = spawnSync(compressCommand[0], compressCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+      
+      if (compressResult.status !== 0) {
+        console.error('Compression command failed with output:');
+        if (compressResult.stdout) console.error('stdout:', compressResult.stdout.toString());
+        if (compressResult.stderr) console.error('stderr:', compressResult.stderr.toString());
+        throw new Error(`Compression command failed with status ${compressResult.status}`);
+      }
+      
+      console.log('✅ Compressed Cartesi machine snapshot created successfully');
+    }
+    
   } catch (err) {
     console.error('Error building LinuxKit image:', err);
     process.exit(1);
