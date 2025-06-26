@@ -468,38 +468,6 @@ function checkRiscv64Support() {
   }
 }
 
-function ensureBuilderHasHostAccess() {
-  console.log('Ensuring builder has registry access...');
-  try {
-    // Check if builder has BuildKit configuration
-    const builderInfo = execSync('docker buildx inspect vcr-builder', { encoding: 'utf8' });
-    if (builderInfo.includes('--config=') || builderInfo.includes('buildkit.toml')) {
-      console.log('✅ Builder has BuildKit configuration');
-      return;
-    }
-    
-    console.log('⚠️  Builder needs BuildKit configuration. Recreating...');
-    try {
-      execSync('docker buildx rm vcr-builder', { stdio: 'ignore' });
-    } catch (err) {
-      // Builder might not exist, that's fine
-    }
-    
-    // Recreate with BuildKit configuration
-    const configPath = createBuildKitConfig();
-    const createCommand = configPath 
-      ? `docker buildx create --name vcr-builder --use --driver docker-container --config=${configPath}`
-      : 'docker buildx create --name vcr-builder --use --driver docker-container';
-    
-    execSync(createCommand, { stdio: 'inherit' });
-    execSync('docker buildx inspect --bootstrap', { stdio: 'inherit' });
-    console.log('✅ Builder recreated with BuildKit configuration');
-    
-  } catch (err) {
-    console.log('Could not verify builder configuration, continuing...');
-  }
-}
-
 function createBuildKitConfig() {
   console.log('Creating BuildKit configuration for insecure registry...');
   try {
@@ -603,7 +571,6 @@ function main() {
     case 'build':
       checkBuildxAvailable();
       checkVcrBuilder();
-      ensureBuilderHasHostAccess();
       checkLocalRegistry();
       
       let imageTag: string | undefined;
