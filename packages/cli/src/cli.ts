@@ -510,7 +510,7 @@ function buildLinuxKitImage(yamlPath: string) {
   console.log('Building LinuxKit image...');
   
   const currentDir = cwd();
-  const imageName = process.env.LINUXKIT_IMAGE || 'linuxkit-builder:1.0';
+  const imageName = process.env.LINUXKIT_IMAGE || 'ghcr.io/zippiehq/vcr-linuxkit-builder:latest';
   
   console.log(`Using LinuxKit image: ${imageName}`);
   console.log(`Working directory: ${currentDir}`);

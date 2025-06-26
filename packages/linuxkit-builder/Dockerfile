@@ -18,7 +18,7 @@ RUN make GOOS=linux GOARCH=$TARGETARCH LOCAL_TARGET=$(pwd)/bin/linuxkit local-bu
 
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates docker.io
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates docker.io
 COPY --from=builder /src/bin/linuxkit /usr/local/bin/linuxkit
 
 ENTRYPOINT ["linuxkit"] 
