@@ -13,6 +13,240 @@ function checkDockerAvailable() {
   }
 }
 
+function checkBuildxAvailable() {
+  try {
+    execSync('docker buildx version', { stdio: 'ignore' });
+  } catch (err) {
+    console.error('Error: Docker buildx is not available. Please install Docker buildx and try again.');
+    process.exit(1);
+  }
+}
+
+function checkVcrBuilder() {
+  try {
+    execSync('docker buildx inspect vcr-builder', { stdio: 'ignore' });
+    console.log('✅ vcr-builder found and ready');
+    
+    // Ensure builder can access the registry network
+    try {
+      execSync('docker network connect vcr-network vcr-builder0', { stdio: 'ignore' });
+      console.log('✅ vcr-builder connected to vcr-network');
+    } catch (err) {
+      // Already connected or network doesn't exist yet, that's fine
+      console.log('ℹ️  vcr-builder network connection checked');
+    }
+  } catch (err) {
+    console.log('⚠️  vcr-builder not found. Creating it...');
+    try {
+      // Create BuildKit configuration
+      const configPath = createBuildKitConfig();
+      
+      // Create builder with BuildKit configuration
+      const createCommand = configPath 
+        ? `docker buildx create --name vcr-builder --use --driver docker-container --config=${configPath}`
+        : 'docker buildx create --name vcr-builder --use --driver docker-container';
+      
+      execSync(createCommand, { stdio: 'inherit' });
+      console.log('✅ vcr-builder created successfully');
+      
+      console.log('Bootstrapping vcr-builder...');
+      execSync('docker buildx inspect --bootstrap', { stdio: 'inherit' });
+      console.log('✅ vcr-builder bootstrapped and ready');
+      
+      // Connect to registry network
+      try {
+        execSync('docker network connect vcr-network vcr-builder0', { stdio: 'ignore' });
+        console.log('✅ vcr-builder connected to vcr-network');
+      } catch (networkErr) {
+        console.log('ℹ️  Network connection will be handled later');
+      }
+    } catch (createErr) {
+      console.error('Error creating vcr-builder:', createErr);
+      process.exit(1);
+    }
+  }
+}
+
+function checkLocalRegistry() {
+  try {
+    const registryRunning = execSync('docker ps --filter "name=vcr-registry" --format "{{.Names}}"', { encoding: 'utf8' }).trim();
+    if (registryRunning) {
+      console.log('✅ vcr-registry is running');
+    } else {
+      console.log('⚠️  vcr-registry not running. Starting it...');
+      startLocalRegistry();
+    }
+  } catch (err) {
+    console.log('⚠️  vcr-registry not running. Starting it...');
+    startLocalRegistry();
+  }
+}
+
+function startLocalRegistry() {
+  try {
+    // Create a custom network for registry communication
+    try {
+      execSync('docker network create vcr-network', { stdio: 'ignore' });
+      console.log('✅ vcr-network created');
+    } catch (err) {
+      // Network might already exist, that's fine
+      console.log('ℹ️  vcr-network already exists');
+    }
+    
+    // Check if registry container exists but is stopped
+    const registryExists = execSync('docker ps -a --filter "name=vcr-registry" --format "{{.Names}}"', { encoding: 'utf8' }).trim();
+    
+    if (registryExists) {
+      console.log('Starting existing vcr-registry container...');
+      execSync('docker start vcr-registry', { stdio: 'inherit' });
+    } else {
+      console.log('Creating and starting vcr-registry...');
+      // Configure registry as insecure for local development with HTTP
+      const registryConfig = {
+        version: '0.1',
+        storage: {
+          delete: { enabled: true }
+        },
+        http: {
+          addr: ':5000',
+          headers: {
+            'X-Content-Type-Options': ['nosniff']
+          }
+        }
+      };
+      
+      // Write config to temp file
+      const configPath = '/tmp/registry-config.yml';
+      writeFileSync(configPath, JSON.stringify(registryConfig, null, 2));
+      
+      execSync(`docker run -d -p 5001:5000 --restart=always --name vcr-registry --network vcr-network -v ${configPath}:/etc/docker/registry/config.yml registry:3`, { stdio: 'inherit' });
+    }
+    
+    // Connect existing registry to network if not already connected
+    try {
+      execSync('docker network connect vcr-network vcr-registry', { stdio: 'ignore' });
+    } catch (err) {
+      // Already connected, that's fine
+    }
+    
+    // Wait for registry to be ready by checking HTTP connectivity
+    console.log('Waiting for registry to be ready...');
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds max
+    
+    while (attempts < maxAttempts) {
+      try {
+        execSync('curl -f http://localhost:5001/v2/', { stdio: 'ignore' });
+        console.log('✅ vcr-registry is ready');
+        return;
+      } catch (err) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log(`Waiting for registry... (attempt ${attempts}/${maxAttempts})`);
+          execSync('sleep 1', { stdio: 'ignore' });
+        }
+      }
+    }
+    
+    console.error('Error: Registry failed to start within 30 seconds');
+    process.exit(1);
+    
+  } catch (err) {
+    console.error('Error starting vcr-registry:', err);
+    process.exit(1);
+  }
+}
+
+function getNativePlatform(): string {
+  try {
+    const os = execSync('docker version --format "{{.Server.Os}}"', { encoding: 'utf8' }).trim();
+    const arch = execSync('docker version --format "{{.Server.Arch}}"', { encoding: 'utf8' }).trim();
+    return `${os}/${arch}`;
+  } catch (err) {
+    console.error('Error: Could not determine native platform');
+    process.exit(1);
+  }
+}
+
+function resolvePlatforms(profile: string): string[] {
+  switch (profile) {
+    case 'dev':
+      return [getNativePlatform()];
+    case 'test':
+    case 'prod':
+    case 'prod-debug':
+      return ['linux/riscv64'];
+    default:
+      console.error(`Error: Unknown profile '${profile}'`);
+      process.exit(1);
+  }
+}
+
+function verifyRegistryConnectivity() {
+  console.log('Verifying registry connectivity...');
+  try {
+    execSync('curl -f http://localhost:5001/v2/', { stdio: 'ignore' });
+    console.log('✅ Registry connectivity verified');
+  } catch (err) {
+    console.error('Error: Cannot connect to registry at localhost:5001');
+    console.error('Please ensure vcr-registry is running');
+    process.exit(1);
+  }
+}
+
+function buildImage(imageTag: string, profile: string, cacheDir?: string) {
+  const currentDir = cwd();
+  console.log(`Building image: ${imageTag}`);
+  console.log(`Profile: ${profile}`);
+  console.log(`Working directory: ${currentDir}`);
+  
+  // Check if Dockerfile exists
+  if (!existsSync(join(currentDir, 'Dockerfile'))) {
+    console.error('Error: No Dockerfile found in current directory');
+    process.exit(1);
+  }
+  
+  // Resolve platforms
+  const platforms = resolvePlatforms(profile);
+  console.log(`Platforms: ${platforms.join(', ')}`);
+  
+  // Construct full image name with local registry
+  const fullImageName = `host.docker.internal:5001/${imageTag}`;
+  console.log(`Full image name: ${fullImageName}`);
+  
+  // Build command
+  const buildArgs = [
+    'buildx',
+    'build',
+    '--builder', 'vcr-builder',
+    '--platform', platforms.join(','),
+    '-t', fullImageName,
+    '--push'
+  ];
+  
+  // Add cache directory if specified
+  if (cacheDir) {
+    buildArgs.push('--cache-from', `type=local,src=${cacheDir}`);
+    buildArgs.push('--cache-to', `type=local,dest=${cacheDir},mode=max`);
+  }
+  
+  // Add context directory
+  buildArgs.push('.');
+  
+  const buildCommand = `docker ${buildArgs.join(' ')}`;
+  console.log(`Executing: ${buildCommand}`);
+  
+  try {
+    verifyRegistryConnectivity();
+    execSync(buildCommand, { stdio: 'inherit', cwd: currentDir });
+    console.log(`\n✅ Build completed successfully!`);
+    console.log(`Image pushed to: ${fullImageName}`);
+  } catch (err) {
+    console.error('Error building image:', err);
+    process.exit(1);
+  }
+}
+
 function buildDevContainer() {
   const currentDir = cwd();
   console.log('Building development container...');
@@ -173,14 +407,116 @@ function showHelp() {
 vcr CLI - Verifiable Container Runner
 
 Usage:
-  vcr run dev     Build and run development environment with isolated networking
-  vcr linuxkit    Run linuxkit container with current directory and Docker socket mounted
-  vcr --help      Show this help message
+  vcr build -t <name:tag> [options]  Build and push container images
+  vcr run dev                        Build and run development environment with isolated networking
+  vcr linuxkit                       Run linuxkit container with current directory and Docker socket mounted
+  vcr --help                         Show this help message
+
+Build Options:
+  -t, --tag <name:tag>              Image name:tag (required)
+  --profile <dev|test|prod|prod-debug>  Build profile (default: dev)
+  --cache-dir <dir>                 Optional path to store exported build metadata
+
+Build Profiles:
+  dev        Native platform only, no dev tools, no attestation
+  test       RISC-V 64-bit, with dev tools, no attestation
+  prod       RISC-V 64-bit, no dev tools, with attestation
+  prod-debug RISC-V 64-bit, with dev tools, with attestation
 
 Examples:
-  vcr run dev     # Build container and start dev environment
-  vcr linuxkit    # Start linuxkit container with mounts
+  vcr build -t web3link/myapp:1.2.3                    # Fast dev loop (native)
+  vcr build -t web3link/myapp:1.2.3 --profile test     # RISC-V with dev tools
+  vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
+  vcr run dev                                          # Start dev environment
+  vcr linuxkit                                         # Start linuxkit container
+
+Prerequisites:
+  - Docker and buildx installed
+  - vcr-builder and vcr-registry will be created/started automatically if needed
 `);
+}
+
+function checkRiscv64Support() {
+  console.log('Checking RISC-V 64-bit binary execution support...');
+  
+  try {
+    // Try to run hello-world RISC-V 64-bit image
+    execSync('docker run --rm --platform linux/riscv64 hello-world:latest', { stdio: 'pipe' });
+    console.log('✅ RISC-V 64-bit binary execution is supported');
+  } catch (err) {
+    console.log('⚠️  RISC-V 64-bit binary execution not supported. Installing binfmt emulation...');
+    try {
+      execSync('docker run --privileged --rm tonistiigi/binfmt --install riscv64', { stdio: 'inherit' });
+      console.log('✅ RISC-V 64-bit binfmt emulation installed');
+      
+      // Verify installation worked
+      console.log('Verifying RISC-V 64-bit support...');
+      execSync('docker run --rm --platform linux/riscv64 hello-world:latest', { stdio: 'pipe' });
+      console.log('✅ RISC-V 64-bit binary execution is now supported');
+    } catch (installErr) {
+      console.error('Error installing RISC-V 64-bit support:', installErr);
+      console.error('Please run manually: docker run --privileged --rm tonistiigi/binfmt --install riscv64');
+      process.exit(1);
+    }
+  }
+}
+
+function ensureBuilderHasHostAccess() {
+  console.log('Ensuring builder has registry access...');
+  try {
+    // Check if builder has BuildKit configuration
+    const builderInfo = execSync('docker buildx inspect vcr-builder', { encoding: 'utf8' });
+    if (builderInfo.includes('--config=') || builderInfo.includes('buildkit.toml')) {
+      console.log('✅ Builder has BuildKit configuration');
+      return;
+    }
+    
+    console.log('⚠️  Builder needs BuildKit configuration. Recreating...');
+    try {
+      execSync('docker buildx rm vcr-builder', { stdio: 'ignore' });
+    } catch (err) {
+      // Builder might not exist, that's fine
+    }
+    
+    // Recreate with BuildKit configuration
+    const configPath = createBuildKitConfig();
+    const createCommand = configPath 
+      ? `docker buildx create --name vcr-builder --use --driver docker-container --config=${configPath}`
+      : 'docker buildx create --name vcr-builder --use --driver docker-container';
+    
+    execSync(createCommand, { stdio: 'inherit' });
+    execSync('docker buildx inspect --bootstrap', { stdio: 'inherit' });
+    console.log('✅ Builder recreated with BuildKit configuration');
+    
+  } catch (err) {
+    console.log('Could not verify builder configuration, continuing...');
+  }
+}
+
+function createBuildKitConfig() {
+  console.log('Creating BuildKit configuration for insecure registry...');
+  try {
+    const buildkitConfig = `[registry."vcr-registry:5000"]
+http = true
+insecure = true
+
+[registry."host.docker.internal:5001"]
+http = true
+insecure = true
+
+[registry."localhost:5001"]
+http = true
+insecure = true
+`;
+    
+    const configPath = '/tmp/buildkitd.toml';
+    writeFileSync(configPath, buildkitConfig);
+    console.log('✅ BuildKit configuration created');
+    return configPath;
+  } catch (err) {
+    console.error('Error creating BuildKit config:', err);
+    return null;
+  }
 }
 
 function main() {
@@ -196,6 +532,61 @@ function main() {
   const command = args[0];
   
   switch (command) {
+    case 'build':
+      checkBuildxAvailable();
+      checkVcrBuilder();
+      ensureBuilderHasHostAccess();
+      checkLocalRegistry();
+      
+      let imageTag: string | undefined;
+      let profile = 'dev';
+      let cacheDir: string | undefined;
+      
+      // Parse build arguments
+      for (let i = 1; i < args.length; i++) {
+        const arg = args[i];
+        const nextArg = args[i + 1];
+        
+        if (arg === '-t' || arg === '--tag') {
+          if (nextArg) {
+            imageTag = nextArg;
+            i++; // Skip next argument
+          } else {
+            console.error('Error: -t/--tag requires a value');
+            process.exit(1);
+          }
+        } else if (arg === '--profile') {
+          if (nextArg) {
+            profile = nextArg;
+            i++; // Skip next argument
+          } else {
+            console.error('Error: --profile requires a value');
+            process.exit(1);
+          }
+        } else if (arg === '--cache-dir') {
+          if (nextArg) {
+            cacheDir = nextArg;
+            i++; // Skip next argument
+          } else {
+            console.error('Error: --cache-dir requires a value');
+            process.exit(1);
+          }
+        }
+      }
+      
+      if (!imageTag) {
+        console.error('Error: -t/--tag is required');
+        process.exit(1);
+      }
+      
+      // Check RISC-V support if needed
+      if (profile !== 'dev') {
+        checkRiscv64Support();
+      }
+      
+      buildImage(imageTag, profile, cacheDir);
+      break;
+      
     case 'run':
       if (args[1] === 'dev') {
         runDevEnvironment();
@@ -205,14 +596,16 @@ function main() {
         process.exit(1);
       }
       break;
+      
     case 'linuxkit':
       runLinuxkitContainer();
       break;
+      
     default:
       console.error(`Unknown command: ${command}`);
       showHelp();
       process.exit(1);
   }
-}
+} 
 
 main(); 
