@@ -25,15 +25,12 @@ function checkBuildxAvailable() {
 function checkVcrBuilder() {
   try {
     execSync('docker buildx inspect vcr-builder', { stdio: 'ignore' });
-    console.log('✅ vcr-builder found and ready');
     
     // Ensure builder can access the registry network
     try {
       execSync('docker network connect vcr-network vcr-builder0', { stdio: 'ignore' });
-      console.log('✅ vcr-builder connected to vcr-network');
     } catch (err) {
       // Already connected or network doesn't exist yet, that's fine
-      console.log('ℹ️  vcr-builder network connection checked');
     }
   } catch (err) {
     console.log('⚠️  vcr-builder not found. Creating it...');
@@ -71,7 +68,7 @@ function checkLocalRegistry() {
   try {
     const registryRunning = execSync('docker ps --filter "name=vcr-registry" --format "{{.Names}}"', { encoding: 'utf8' }).trim();
     if (registryRunning) {
-      console.log('✅ vcr-registry is running');
+      // Registry is running, no need to print
     } else {
       console.log('⚠️  vcr-registry not running. Starting it...');
       startLocalRegistry();
@@ -183,10 +180,8 @@ function resolvePlatforms(profile: string): string[] {
 }
 
 function verifyRegistryConnectivity() {
-  console.log('Verifying registry connectivity...');
   try {
     execSync('curl -f http://localhost:5001/v2/', { stdio: 'ignore' });
-    console.log('✅ Registry connectivity verified');
   } catch (err) {
     console.error('Error: Cannot connect to registry at localhost:5001');
     console.error('Please ensure vcr-registry is running');
@@ -198,7 +193,6 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
-  console.log(`Working directory: ${currentDir}`);
   
   // Check if Dockerfile exists
   if (!existsSync(join(currentDir, 'Dockerfile'))) {
@@ -208,11 +202,9 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
   
   // Resolve platforms
   const platforms = resolvePlatforms(profile);
-  console.log(`Platforms: ${platforms.join(', ')}`);
   
   // Construct full image name with local registry
   const fullImageName = `host.docker.internal:5001/${imageTag}`;
-  console.log(`Full image name: ${fullImageName}`);
   
   // Build command
   const buildArgs = [
@@ -234,7 +226,6 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
   buildArgs.push('.');
   
   const buildCommand = `docker ${buildArgs.join(' ')}`;
-  console.log(`Executing: ${buildCommand}`);
   
   try {
     verifyRegistryConnectivity();
@@ -443,13 +434,10 @@ Prerequisites:
 `);
 }
 
-function checkRiscv64Support() {
-  console.log('Checking RISC-V 64-bit binary execution support...');
-  
+function checkRiscv64Support() {  
   try {
     // Try to run hello-world RISC-V 64-bit image
     execSync('docker run --rm --platform linux/riscv64 hello-world:latest', { stdio: 'pipe' });
-    console.log('✅ RISC-V 64-bit binary execution is supported');
   } catch (err) {
     console.log('⚠️  RISC-V 64-bit binary execution not supported. Installing binfmt emulation...');
     try {
