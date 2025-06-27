@@ -2,7 +2,7 @@
 import { execSync, spawnSync } from 'child_process';
 import { cwd } from 'process';
 import { join } from 'path';
-import { writeFileSync, existsSync, unlinkSync, mkdirSync } from 'fs';
+import { writeFileSync, existsSync, unlinkSync, mkdirSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 
 function checkDockerAvailable() {
@@ -593,13 +593,25 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
         imageName,
-        'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', 'vc.yml'
+        'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', 'vc.yml'
       ];
       
       console.log(`Executing: ${command.join(' ')}`);
       execSync(command.join(' '), { stdio: 'inherit', cwd: currentDir });
       
       console.log('✅ LinuxKit image built successfully');
+      
+      // Print SHA256 of vc.tar before it gets consumed
+      try {
+        if (existsSync(vcTarPath)) {
+          const vcTarHash = execSync(`sha256sum "${vcTarPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
+          console.log(`📦 vc.tar SHA256: ${vcTarHash}`);
+        } else {
+          console.log('⚠️  vc.tar not found after LinuxKit build');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not calculate vc.tar SHA256:', err);
+      }
       
       // Start snapshot builder to create squashfs
       console.log('Creating squashfs from vc.tar...');
@@ -664,6 +676,20 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         }
         
         console.log('✅ Cartesi machine snapshot created successfully');
+        
+        // Print the hash from vc-cm-snapshot/hash
+        try {
+          const hashPath = join(cmSnapshotPath, 'hash');
+          if (existsSync(hashPath)) {
+            const hashBuffer = readFileSync(hashPath);
+            const hash = hashBuffer.toString('hex');
+            console.log(`🔐 Cartesi machine hash: ${hash}`);
+          } else {
+            console.log('⚠️  Hash file not found at vc-cm-snapshot/hash');
+          }
+        } catch (hashErr) {
+          console.log('⚠️  Could not read Cartesi machine hash:', hashErr);
+        }
       }
       
       // Check if we need to compress Cartesi machine snapshot
@@ -720,6 +746,75 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         }
         
         console.log('✅ Verity hash tree created successfully');
+      }
+      
+      // Print all hashes and file contents (always run, even if cached)
+      console.log('\n📊 Build Artifacts Summary:');
+      
+      // Print SHA256 of vc.squashfs
+      try {
+        const vcSquashfsPath = cacheDir ? join(cacheDir, 'vc.squashfs') : join(currentDir, 'vc.squashfs');
+        if (existsSync(vcSquashfsPath)) {
+          const vcSquashfsHash = execSync(`sha256sum "${vcSquashfsPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
+          console.log(`📦 vc.squashfs SHA256: ${vcSquashfsHash}`);
+        } else {
+          console.log('⚠️  vc.squashfs not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not calculate vc.squashfs SHA256:', err);
+      }
+      
+      // Print SHA256 of vc-cm-snapshot.squashfs
+      try {
+        const cmSquashfsPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs') : join(currentDir, 'vc-cm-snapshot.squashfs');
+        if (existsSync(cmSquashfsPath)) {
+          const cmSquashfsHash = execSync(`sha256sum "${cmSquashfsPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
+          console.log(`📦 vc-cm-snapshot.squashfs SHA256: ${cmSquashfsHash}`);
+        } else {
+          console.log('⚠️  vc-cm-snapshot.squashfs not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not calculate vc-cm-snapshot.squashfs SHA256:', err);
+      }
+      
+      // Print Cartesi machine hash
+      try {
+        const hashPath = join(cmSnapshotPath, 'hash');
+        if (existsSync(hashPath)) {
+          const hashBuffer = readFileSync(hashPath);
+          const hash = hashBuffer.toString('hex');
+          console.log(`🔐 Cartesi machine hash: ${hash}`);
+        } else {
+          console.log('⚠️  Cartesi machine hash file not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not read Cartesi machine hash:', err);
+      }
+      
+      // Print root-hash content
+      try {
+        const rootHashPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.root-hash') : join(currentDir, 'vc-cm-snapshot.squashfs.root-hash');
+        if (existsSync(rootHashPath)) {
+          const rootHash = execSync(`cat "${rootHashPath}"`, { encoding: 'utf8' }).trim();
+          console.log(`🔑 Root hash: ${rootHash}`);
+        } else {
+          console.log('⚠️  Root hash file not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not read root hash:', err);
+      }
+      
+      // Print SHA256 of verity file
+      try {
+        const verityPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.verity') : join(currentDir, 'vc-cm-snapshot.squashfs.verity');
+        if (existsSync(verityPath)) {
+          const verityHash = execSync(`sha256sum "${verityPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
+          console.log(`🔒 Verity file SHA256: ${verityHash}`);
+        } else {
+          console.log('⚠️  Verity file not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not calculate verity file SHA256:', err);
       }
     }
     
