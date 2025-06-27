@@ -27,6 +27,7 @@ target "snapshot-builder" {
   context = "./packages/snapshot-builder"
   dockerfile = "Dockerfile"
   tags = ["ghcr.io/zippiehq/vcr-snapshot-builder:latest"]
+  depends_on = ["vcr-kernels"]
 }
 
 target "linuxkit-builder" {
