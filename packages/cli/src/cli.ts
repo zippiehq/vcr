@@ -590,7 +590,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         '--network', 'host',
         '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
-        '-v', `${homedir()}/.linuxkit/cache:/root/.linuxkit/cache`,
+        '-v', `${join(homedir(), '.cache', 'vcr', 'linuxkit-cache')}:/root/.linuxkit/cache`,
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
         imageName,
