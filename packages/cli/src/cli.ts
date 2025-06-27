@@ -623,7 +623,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         '-w', '/cache',
         'ghcr.io/zippiehq/vcr-snapshot-builder',
         'bash', '-c',
-        'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX < /cache/vc.tar && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
+        'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX -reproducible < /cache/vc.tar && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
       ];
       
       console.log(`Executing: ${snapshotCommand.join(' ')}`);
@@ -705,7 +705,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          'SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible'
+          'rm -f /cache/vc-cm-snapshot.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible'
         ];
         
         console.log(`Executing: ${compressCommand.join(' ')}`);
