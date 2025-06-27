@@ -58,6 +58,7 @@ RUN sha256sum /work/linux-2/arch/riscv/boot/Image
 # Build OpenSBI with kernel payload
 WORKDIR /work/opensbi
 RUN SOURCE_DATE_EPOCH=0 make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS_COMPILE=riscv64-linux-gnu- FW_PAYLOAD_PATH=/work/linux/arch/riscv/boot/Image
+RUN sha256sum /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin
 
 # Final stage: copy artifacts to clean image
 FROM debian:bookworm-slim
