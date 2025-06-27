@@ -39,25 +39,25 @@ COPY kernel-config linux/.config
 
 # Build kernel with deterministic timestamps
 WORKDIR /work/linux
-RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
-    ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) olddefconfig
+RUN SOURCE_DATA_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) olddefconfig
 
-RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
-    ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
+RUN SOURCE_DATA_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
+
+RUN sha256sum /work/linux/arch/riscv/boot/Image
 
 # Build kernel with deterministic timestamps
 WORKDIR /work/linux-2
-RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
-    ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) defconfig
+RUN SOURCE_DATA_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) defconfig
 
 RUN echo "CONFIG_RISCV_SBI_V01=y" >> .config
 
-RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
-    ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
+RUN SOURCE_DATA_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
+
+RUN sha256sum /work/linux-2/arch/riscv/boot/Image
 
 # Build OpenSBI with kernel payload
 WORKDIR /work/opensbi
-RUN make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS_COMPILE=riscv64-linux-gnu- FW_PAYLOAD_PATH=/work/linux/arch/riscv/boot/Image
+RUN SOURCE_DATA_EPOCH=0 make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS_COMPILE=riscv64-linux-gnu- FW_PAYLOAD_PATH=/work/linux/arch/riscv/boot/Image
 
 # Final stage: copy artifacts to clean image
 FROM debian:bookworm-slim
