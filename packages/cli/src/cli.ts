@@ -238,7 +238,9 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
     '--builder', 'vcr-builder',
     '--platform', platforms.join(','),
     '-t', fullImageName,
-    '--push'
+    '--push',
+    '--provenance=false',
+    '--sbom=false'
   ];
   
   // Add cache directory if specified
@@ -254,7 +256,11 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
   
   try {
     verifyRegistryConnectivity();
-    execSync(buildCommand, { stdio: 'inherit', cwd: currentDir });
+    execSync(buildCommand, { 
+      stdio: 'inherit', 
+      cwd: currentDir,
+      env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
+    });
     console.log(`\n✅ Build completed successfully!`);
     console.log(`Image pushed to: localhost:5001/${imageTag}`);
     
