@@ -214,7 +214,7 @@ function verifyRegistryConnectivity() {
   }
 }
 
-function buildImage(imageTag: string, profile: string, cacheDir?: string) {
+function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false) {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
@@ -278,7 +278,7 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
     if (profile === 'test' || profile === 'prod') {
       console.log(`\n🔄 Building LinuxKit image for ${profile} profile...`);
       const yamlPath = generateLinuxKitYaml(imageTag, cacheDir, imageDigest);
-      buildLinuxKitImage(yamlPath, profile, imageDigest, cacheDir);
+      buildLinuxKitImage(yamlPath, profile, imageDigest, cacheDir, forceRebuild);
     }
   } catch (err) {
     console.error('Error building image:', err);
@@ -456,6 +456,7 @@ Build Options:
   -t, --tag <name:tag>              Image name:tag (required)
   --profile <dev|test|prod|prod-debug>  Build profile (default: dev)
   --cache-dir <dir>                 Optional path to store exported build metadata
+  --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
 
 Build Profiles:
   dev        Native platform only, no dev tools, no attestation
@@ -467,6 +468,7 @@ Examples:
   vcr build -t web3link/myapp:1.2.3                    # Fast dev loop (native)
   vcr build -t web3link/myapp:1.2.3 --profile test     # RISC-V with dev tools
   vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
+  vcr build -t web3link/myapp:1.2.3 --force-rebuild    # Force rebuild all artifacts
   vcr run dev                                          # Start dev environment
   vcr linuxkit                                         # Start linuxkit container
   vcr prune                                            # Clean up VCR environment
@@ -550,7 +552,7 @@ services:
   return yamlPath;
 }
 
-function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: string, cacheDir?: string) {
+function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: string, cacheDir?: string, forceRebuild = false) {
   console.log('Building LinuxKit image...');
   
   if (imageDigest) {
@@ -565,116 +567,154 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
   console.log(`Cache directory: ${cacheDir}`);
   
   try {
-    const command = [
-      'docker', 'run', '--rm',
-      '--network', 'host',
-      '-v', `${currentDir}:/work`,
-      '-v', `${cacheDir}:/cache`,
-      '-v', '/var/run/docker.sock:/var/run/docker.sock',
-      '-w', '/cache',
-      imageName,
-      'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', 'vc.yml'
-    ];
+    // Check if we need to rebuild LinuxKit image
+    const vcTarPath = cacheDir ? join(cacheDir, 'vc.tar') : join(currentDir, 'vc.tar');
+    const vcSquashfsPath = cacheDir ? join(cacheDir, 'vc.squashfs') : join(currentDir, 'vc.squashfs');
     
-    console.log(`Executing: ${command.join(' ')}`);
-    execSync(command.join(' '), { stdio: 'inherit', cwd: currentDir });
-    
-    console.log('✅ LinuxKit image built successfully');
-    
-    // Start snapshot builder to create squashfs
-    console.log('Creating squashfs from vc.tar...');
-    const snapshotCommand = [
-      'docker', 'run', '--rm',
-      '-v', `${currentDir}:/work`,
-      '-v', `${cacheDir}:/cache`,
-      '-w', '/cache',
-      'ghcr.io/zippiehq/vcr-snapshot-builder',
-      'bash', '-c',
-      'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX < /cache/vc.tar && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
-    ];
-    
-    console.log(`Executing: ${snapshotCommand.join(' ')}`);
-    const result = spawnSync(snapshotCommand[0], snapshotCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
-    
-    if (result.status !== 0) {
-      console.error('Command failed with output:');
-      if (result.stdout) console.error('stdout:', result.stdout.toString());
-      if (result.stderr) console.error('stderr:', result.stderr.toString());
-      throw new Error(`Command failed with status ${result.status}`);
+    if (!forceRebuild && existsSync(vcSquashfsPath)) {
+      console.log('✅ vc.squashfs already exists, skipping LinuxKit build and squashfs creation');
+    } else {
+      if (forceRebuild && existsSync(vcTarPath)) {
+        console.log('🔄 Force rebuild: removing existing vc.tar');
+        unlinkSync(vcTarPath);
+      }
+      
+      const command = [
+        'docker', 'run', '--rm',
+        '--network', 'host',
+        '-v', `${currentDir}:/work`,
+        '-v', `${cacheDir}:/cache`,
+        '-v', '/var/run/docker.sock:/var/run/docker.sock',
+        '-w', '/cache',
+        imageName,
+        'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', 'vc.yml'
+      ];
+      
+      console.log(`Executing: ${command.join(' ')}`);
+      execSync(command.join(' '), { stdio: 'inherit', cwd: currentDir });
+      
+      console.log('✅ LinuxKit image built successfully');
+      
+      // Start snapshot builder to create squashfs
+      console.log('Creating squashfs from vc.tar...');
+      const snapshotCommand = [
+        'docker', 'run', '--rm',
+        '-v', `${currentDir}:/work`,
+        '-v', `${cacheDir}:/cache`,
+        '-w', '/cache',
+        'ghcr.io/zippiehq/vcr-snapshot-builder',
+        'bash', '-c',
+        'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX < /cache/vc.tar && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
+      ];
+      
+      console.log(`Executing: ${snapshotCommand.join(' ')}`);
+      const result = spawnSync(snapshotCommand[0], snapshotCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+      
+      if (result.status !== 0) {
+        console.error('Command failed with output:');
+        if (result.stdout) console.error('stdout:', result.stdout.toString());
+        if (result.stderr) console.error('stderr:', result.stderr.toString());
+        throw new Error(`Command failed with status ${result.status}`);
+      }
+      
+      console.log('✅ Squashfs created successfully');
     }
-    
-    console.log('✅ Squashfs created successfully');
     
     // Additional steps for prod profile
     if (profile === 'prod') {
-      console.log('Creating Cartesi machine snapshot...');
-      const cartesiCommand = [
-        'docker', 'run', '--rm',
-        '-v', `${currentDir}:/work`,
-        '-v', `${cacheDir}:/cache`,
-        '-w', '/cache',
-        'ghcr.io/zippiehq/vcr-snapshot-builder',
-        'bash', '-c',
-        'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
-      ];
+      const cmSnapshotPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot') : join(currentDir, 'vc-cm-snapshot');
+      const cmSquashfsPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs') : join(currentDir, 'vc-cm-snapshot.squashfs');
+      const verityPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.verity') : join(currentDir, 'vc-cm-snapshot.squashfs.verity');
+      const rootHashPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.root-hash') : join(currentDir, 'vc-cm-snapshot.squashfs.root-hash');
       
-      console.log(`Executing: ${cartesiCommand.join(' ')}`);
-      const cartesiResult = spawnSync(cartesiCommand[0], cartesiCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
-      
-      if (cartesiResult.status !== 0) {
-        console.error('Cartesi machine command failed with output:');
-        if (cartesiResult.stdout) console.error('stdout:', cartesiResult.stdout.toString());
-        if (cartesiResult.stderr) console.error('stderr:', cartesiResult.stderr.toString());
-        throw new Error(`Cartesi machine command failed with status ${cartesiResult.status}`);
+      // Check if we need to create Cartesi machine snapshot
+      if (!forceRebuild && existsSync(cmSnapshotPath)) {
+        console.log('✅ vc-cm-snapshot already exists, skipping Cartesi machine creation');
+      } else {
+        if (forceRebuild && existsSync(cmSnapshotPath)) {
+          console.log('🔄 Force rebuild: removing existing vc-cm-snapshot');
+          execSync(`rm -rf "${cmSnapshotPath}"`, { stdio: 'ignore' });
+        }
+        
+        console.log('Creating Cartesi machine snapshot...');
+        const cartesiCommand = [
+          'docker', 'run', '--rm',
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-w', '/cache',
+          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          'bash', '-c',
+          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
+        ];
+        
+        console.log(`Executing: ${cartesiCommand.join(' ')}`);
+        const cartesiResult = spawnSync(cartesiCommand[0], cartesiCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+        
+        if (cartesiResult.status !== 0) {
+          console.error('Cartesi machine command failed with output:');
+          if (cartesiResult.stdout) console.error('stdout:', cartesiResult.stdout.toString());
+          if (cartesiResult.stderr) console.error('stderr:', cartesiResult.stderr.toString());
+          throw new Error(`Cartesi machine command failed with status ${cartesiResult.status}`);
+        }
+        
+        console.log('✅ Cartesi machine snapshot created successfully');
       }
       
-      console.log('✅ Cartesi machine snapshot created successfully');
-      
-      console.log('Creating compressed Cartesi machine snapshot...');
-      const compressCommand = [
-        'docker', 'run', '--rm',
-        '-v', `${currentDir}:/work`,
-        '-v', `${cacheDir}:/cache`,
-        '-w', '/cache',
-        'ghcr.io/zippiehq/vcr-snapshot-builder',
-        'bash', '-c',
-        'SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible'
-      ];
-      
-      console.log(`Executing: ${compressCommand.join(' ')}`);
-      const compressResult = spawnSync(compressCommand[0], compressCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
-      
-      if (compressResult.status !== 0) {
-        console.error('Compression command failed with output:');
-        if (compressResult.stdout) console.error('stdout:', compressResult.stdout.toString());
-        if (compressResult.stderr) console.error('stderr:', compressResult.stderr.toString());
-        throw new Error(`Compression command failed with status ${compressResult.status}`);
+      // Check if we need to compress Cartesi machine snapshot
+      if (!forceRebuild && existsSync(cmSquashfsPath)) {
+        console.log('✅ vc-cm-snapshot.squashfs already exists, skipping compression');
+      } else {
+        console.log('Creating compressed Cartesi machine snapshot...');
+        const compressCommand = [
+          'docker', 'run', '--rm',
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-w', '/cache',
+          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          'bash', '-c',
+          'SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible'
+        ];
+        
+        console.log(`Executing: ${compressCommand.join(' ')}`);
+        const compressResult = spawnSync(compressCommand[0], compressCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+        
+        if (compressResult.status !== 0) {
+          console.error('Compression command failed with output:');
+          if (compressResult.stdout) console.error('stdout:', compressResult.stdout.toString());
+          if (compressResult.stderr) console.error('stderr:', compressResult.stderr.toString());
+          throw new Error(`Compression command failed with status ${compressResult.status}`);
+        }
+        
+        console.log('✅ Compressed Cartesi machine snapshot created successfully');
       }
       
-      console.log('✅ Compressed Cartesi machine snapshot created successfully');
-      
-      console.log('Creating verity hash tree...');
-      const verityCommand = [
-        'docker', 'run', '--rm',
-        '-v', `${currentDir}:/work`,
-        '-v', `${cacheDir}:/cache`,
-        '-w', '/cache',
-        'ghcr.io/zippiehq/vcr-snapshot-builder',
-        'bash', '-c',
-        'veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs.verity'
-      ];
-      
-      console.log(`Executing: ${verityCommand.join(' ')}`);
-      const verityResult = spawnSync(verityCommand[0], verityCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
-      
-      if (verityResult.status !== 0) {
-        console.error('Verity setup command failed with output:');
-        if (verityResult.stdout) console.error('stdout:', verityResult.stdout.toString());
-        if (verityResult.stderr) console.error('stderr:', verityResult.stderr.toString());
-        throw new Error(`Verity setup command failed with status ${verityResult.status}`);
+      // Check if we need to create verity hash tree
+      if (!forceRebuild && existsSync(verityPath) && existsSync(rootHashPath)) {
+        console.log('✅ Verity files already exist, skipping verity creation');
+      } else {
+        console.log('Creating verity hash tree...');
+        const verityCommand = [
+          'docker', 'run', '--rm',
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-w', '/cache',
+          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          'bash', '-c',
+          'veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs.verity'
+        ];
+        
+        console.log(`Executing: ${verityCommand.join(' ')}`);
+        const verityResult = spawnSync(verityCommand[0], verityCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+        
+        if (verityResult.status !== 0) {
+          console.error('Verity setup command failed with output:');
+          if (verityResult.stdout) console.error('stdout:', verityResult.stdout.toString());
+          if (verityResult.stderr) console.error('stderr:', verityResult.stderr.toString());
+          throw new Error(`Verity setup command failed with status ${verityResult.status}`);
+        }
+        
+        console.log('✅ Verity hash tree created successfully');
       }
-      
-      console.log('✅ Verity hash tree created successfully');
     }
     
   } catch (err) {
@@ -758,6 +798,7 @@ function main() {
       let imageTag: string | undefined;
       let profile = 'dev';
       let cacheDir: string | undefined;
+      let forceRebuild = false;
       
       // Parse build arguments
       for (let i = 1; i < args.length; i++) {
@@ -788,6 +829,8 @@ function main() {
             console.error('Error: --cache-dir requires a value');
             process.exit(1);
           }
+        } else if (arg === '--force-rebuild') {
+          forceRebuild = true;
         }
       }
       
@@ -801,7 +844,7 @@ function main() {
         checkRiscv64Support();
       }
       
-      buildImage(imageTag, profile, cacheDir);
+      buildImage(imageTag, profile, cacheDir, forceRebuild);
       break;
       
     case 'run':
