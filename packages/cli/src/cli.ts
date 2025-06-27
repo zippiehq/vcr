@@ -727,11 +727,28 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
       } else {
         console.log('Creating verity hash tree...');
         
-        // Extract digest without sha256: prefix for salt
-        const salt = imageDigest ? imageDigest.replace('sha256:', '') : '';
+        // Read Cartesi machine hash for salt and UUID generation
+        let cartesiMachineHash = '';
+        try {
+          const hashPath = join(cmSnapshotPath, 'hash');
+          if (existsSync(hashPath)) {
+            const hashBuffer = readFileSync(hashPath);
+            cartesiMachineHash = hashBuffer.toString('hex');
+            console.log(`Using Cartesi machine hash for verity: ${cartesiMachineHash}`);
+          } else {
+            console.error('Error: Cartesi machine hash file not found');
+            process.exit(1);
+          }
+        } catch (err) {
+          console.error('Error reading Cartesi machine hash:', err);
+          process.exit(1);
+        }
         
-        // Generate deterministic UUID from image digest (first 32 chars of digest)
-        const uuidBase = salt.substring(0, 32);
+        // Use Cartesi machine hash for salt (first 32 chars)
+        const salt = cartesiMachineHash.substring(0, 32);
+        
+        // Generate deterministic UUID from Cartesi machine hash (first 32 chars of hash)
+        const uuidBase = cartesiMachineHash.substring(0, 32);
         const deterministicUuid = `${uuidBase.substring(0, 8)}-${uuidBase.substring(8, 12)}-${uuidBase.substring(12, 16)}-${uuidBase.substring(16, 20)}-${uuidBase.substring(20, 32)}`;
         
         const verityCommand = [
