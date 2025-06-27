@@ -43,7 +43,8 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
 
-RUN sha256sum /work/linux/arch/riscv/boot/Image
+# Verify linux kernel Image hash
+RUN echo "569193ad95b936a08fd9edf1bf5fe024b4aa46dd452fd6a1373d009152c9df49  /work/linux/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux kernel Image hash verification failed" && exit 1)
 
 # Build kernel with deterministic timestamps
 WORKDIR /work/linux-2
@@ -53,12 +54,15 @@ RUN echo "CONFIG_RISCV_SBI_V01=y" >> .config
 
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
 
-RUN sha256sum /work/linux-2/arch/riscv/boot/Image
+# Verify linux-2 kernel Image hash
+RUN echo "4a9c3e035273ca23d6d302e0d7031b198243038b16e8899ebc12def3238a2be1  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
 
 # Build OpenSBI with kernel payload
 WORKDIR /work/opensbi
 RUN SOURCE_DATE_EPOCH=0 make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS_COMPILE=riscv64-linux-gnu- FW_PAYLOAD_PATH=/work/linux/arch/riscv/boot/Image
-RUN sha256sum /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin
+
+# Verify OpenSBI firmware hash
+RUN echo "8e6e3dcdd33cddb014297c0009c2dad15e14e244e11120addef5b2a12b9deacd  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
 
 # Final stage: copy artifacts to clean image
 FROM debian:bookworm-slim

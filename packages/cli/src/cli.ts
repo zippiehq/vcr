@@ -428,7 +428,7 @@ function runLinuxkitContainer() {
   
   try {
     const command = [
-      'docker', 'run', '--rm', '-it',
+      'docker', 'run', '--rm',
       '-v', `${currentDir}:/work`,
       '-v', `${dockerSocket}:${dockerSocket}`,
       '-w', '/work',
@@ -590,6 +590,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         '--network', 'host',
         '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
+        '-v', `${homedir()}/.linuxkit/cache:/root/.linuxkit/cache`,
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
         imageName,
