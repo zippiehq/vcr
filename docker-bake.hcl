@@ -9,27 +9,20 @@ target "docker-platforms" {
   ]
 }
 
-target "advanced-squashfs-builder" {
+target "snapshot-builder" {
   inherits = ["docker-metadata-action", "docker-platforms"]
-  context = "./packages/advanced-squashfs-builder"
+  context = "./packages/snapshot-builder"
   dockerfile = "Dockerfile"
-  tags = ["ghcr.io/zippiehq/advanced-squashfs-builder:latest"]
-}
-
-target "cm-snapshot-builder" {
-  inherits = ["docker-metadata-action", "docker-platforms"]
-  context = "./packages/cm-snapshot-builder"
-  dockerfile = "Dockerfile"
-  tags = ["ghcr.io/zippiehq/cm-snapshot-builder:latest"]
+  tags = ["ghcr.io/zippiehq/vcr-snapshot-builder:latest"]
 }
 
 target "linuxkit-builder" {
   inherits = ["docker-metadata-action", "docker-platforms"]
   context = "./packages/linuxkit-builder"
   dockerfile = "Dockerfile"
-  tags = ["ghcr.io/zippiehq/linuxkit-builder:latest"]
+  tags = ["ghcr.io/zippiehq/vcr-linuxkit-builder:latest"]
 }
 
 target "default" {
-  inherits = ["advanced-squashfs-builder", "cm-snapshot-builder", "linuxkit-builder"]
+  inherits = ["snapshot-builder", "linuxkit-builder"]
 } 

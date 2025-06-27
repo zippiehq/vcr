@@ -31,9 +31,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/zippiehq/advanced-squashfs-builder
-            ghcr.io/zippiehq/cm-snapshot-builder
-            ghcr.io/zippiehq/linuxkit-builder
+            ghcr.io/zippiehq/vcr-snapshot-builder
+            ghcr.io/zippiehq/vcr-linuxkit-builder
           tags: |
             type=semver,pattern={{version}}
             type=ref,event=pr
