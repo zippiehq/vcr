@@ -2,7 +2,8 @@
 import { execSync, spawnSync } from 'child_process';
 import { cwd } from 'process';
 import { join } from 'path';
-import { writeFileSync, existsSync, unlinkSync } from 'fs';
+import { writeFileSync, existsSync, unlinkSync, mkdirSync } from 'fs';
+import { homedir } from 'os';
 
 function checkDockerAvailable() {
   try {
@@ -165,6 +166,30 @@ function getNativePlatform(): string {
   }
 }
 
+function getCacheDirectory(imageDigest?: string): string {
+  const baseCacheDir = join(homedir(), '.cache', 'vcr');
+  
+  // Create base cache directory if it doesn't exist
+  if (!existsSync(baseCacheDir)) {
+    mkdirSync(baseCacheDir, { recursive: true });
+  }
+  
+  if (imageDigest) {
+    // Remove 'sha256:' prefix for directory name
+    const digestDir = imageDigest.replace('sha256:', '');
+    const digestCacheDir = join(baseCacheDir, digestDir);
+    
+    // Create digest-specific cache directory if it doesn't exist
+    if (!existsSync(digestCacheDir)) {
+      mkdirSync(digestCacheDir, { recursive: true });
+    }
+    
+    return digestCacheDir;
+  }
+  
+  return baseCacheDir;
+}
+
 function resolvePlatforms(profile: string): string[] {
   switch (profile) {
     case 'dev':
@@ -233,11 +258,27 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string) {
     console.log(`\n✅ Build completed successfully!`);
     console.log(`Image pushed to: localhost:5001/${imageTag}`);
     
+    // Capture the image digest after successful build
+    let imageDigest: string | undefined;
+    try {
+      const localImageName = `localhost:5001/${imageTag}`;
+      const digestOutput = execSync(`docker buildx imagetools inspect ${localImageName} --format '{{json .}}'`, { encoding: 'utf8' });
+      const digestData = JSON.parse(digestOutput);
+      imageDigest = digestData.manifest.digest;
+      console.log(`Image digest: ${imageDigest}`);
+    } catch (digestErr) {
+      console.log('Could not retrieve image digest');
+    }
+    
+    // Get cache directory based on image digest
+    const cacheDir = getCacheDirectory(imageDigest);
+    console.log(`Cache directory: ${cacheDir}`);
+    
     // For test and prod profiles, also build LinuxKit image
     if (profile === 'test' || profile === 'prod') {
       console.log(`\n🔄 Building LinuxKit image for ${profile} profile...`);
-      const yamlPath = generateLinuxKitYaml(imageTag);
-      buildLinuxKitImage(yamlPath, profile);
+      const yamlPath = generateLinuxKitYaml(imageTag, cacheDir, imageDigest);
+      buildLinuxKitImage(yamlPath, profile, imageDigest, cacheDir);
     }
   } catch (err) {
     console.error('Error building image:', err);
@@ -408,6 +449,7 @@ Usage:
   vcr build -t <name:tag> [options]  Build and push container images
   vcr run dev                        Build and run development environment with isolated networking
   vcr linuxkit                       Run linuxkit container with current directory and Docker socket mounted
+  vcr prune                          Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
 Build Options:
@@ -427,6 +469,7 @@ Examples:
   vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
   vcr run dev                                          # Start dev environment
   vcr linuxkit                                         # Start linuxkit container
+  vcr prune                                            # Clean up VCR environment
 
 Prerequisites:
   - Docker and buildx installed
@@ -482,48 +525,55 @@ insecure = true
   }
 }
 
-function generateLinuxKitYaml(imageTag: string) {
+function generateLinuxKitYaml(imageTag: string, cacheDir?: string, imageDigest?: string) {
+  const imageReference = imageDigest ? `${imageTag}@${imageDigest}` : imageTag;
   const yamlConfig = `init:
-  - ghcr.io/zippiehq/vcr-init:8eea386739975a43af558eec757a7dcb3a3d2e7b
-  - ghcr.io/zippiehq/vcr-runc:667e7ea2c426a2460ca21e3da065a57dbb3369c9
-  - ghcr.io/zippiehq/vcr-containerd:a988a1a8bcbacc2c0390ca0c08f949e2b4b5915d
+  - ghcr.io/zippiehq/vcr-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
+  - ghcr.io/zippiehq/vcr-runc@sha256:3f0a1027ab7507f657cafd28abff329366c0e774714eac48c4d4c10f46778596
+  - ghcr.io/zippiehq/vcr-containerd@sha256:97a307ea9e3eaa21d378f903f067d742bd66abd49e5ff483ae85528bed6d4e8a
 onboot:
   - name: dhcpcd
-    image: ghcr.io/zippiehq/vcr-dhcpcd:157df9ef45a035f1542ec2270e374f18efef98a5
+    image: ghcr.io/zippiehq/vcr-dhcpcd@sha256:3ad775c7f5402fc960d3812bec6650ffa48747fbd9bd73b62ff71b8d0bb72c5a
     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
 services:
   - name: getty
-    image: ghcr.io/zippiehq/vcr-getty:05eca453695984a69617f1f1f0bcdae7f7032967
+    image: ghcr.io/zippiehq/vcr-getty@sha256:f1e8a4fbdbc7bf52eaad06bd59aa1268c91eb11bd615d3c27e93d8a35c0d8b7a
     env:
      - INSECURE=true
   - name: app
-    image: localhost:5001/${imageTag}
+    image: localhost:5001/${imageReference}
 `;
   
-  const yamlPath = join(cwd(), 'minimal.yml');
+  const yamlPath = cacheDir ? join(cacheDir, 'vc.yml') : join(cwd(), 'vc.yml');
   writeFileSync(yamlPath, yamlConfig);
   console.log(`Generated LinuxKit YAML: ${yamlPath}`);
   return yamlPath;
 }
 
-function buildLinuxKitImage(yamlPath: string, profile: string) {
+function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: string, cacheDir?: string) {
   console.log('Building LinuxKit image...');
+  
+  if (imageDigest) {
+    console.log(`Using image digest: ${imageDigest}`);
+  }
   
   const currentDir = cwd();
   const imageName = process.env.LINUXKIT_IMAGE || 'ghcr.io/zippiehq/vcr-linuxkit-builder:latest';
   
   console.log(`Using LinuxKit image: ${imageName}`);
   console.log(`Working directory: ${currentDir}`);
+  console.log(`Cache directory: ${cacheDir}`);
   
   try {
     const command = [
       'docker', 'run', '--rm',
       '--network', 'host',
       '-v', `${currentDir}:/work`,
+      '-v', `${cacheDir}:/cache`,
       '-v', '/var/run/docker.sock:/var/run/docker.sock',
-      '-w', '/work',
+      '-w', '/cache',
       imageName,
-      'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', 'minimal.yml'
+      'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', 'vc.yml'
     ];
     
     console.log(`Executing: ${command.join(' ')}`);
@@ -532,14 +582,15 @@ function buildLinuxKitImage(yamlPath: string, profile: string) {
     console.log('✅ LinuxKit image built successfully');
     
     // Start snapshot builder to create squashfs
-    console.log('Creating squashfs from minimal.tar...');
+    console.log('Creating squashfs from vc.tar...');
     const snapshotCommand = [
       'docker', 'run', '--rm',
       '-v', `${currentDir}:/work`,
-      '-w', '/work',
+      '-v', `${cacheDir}:/cache`,
+      '-w', '/cache',
       'ghcr.io/zippiehq/vcr-snapshot-builder',
       'bash', '-c',
-      'rm -f /work/minimal.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /work/minimal.squashfs -tar -noI -noId -noD -noF -noX < /work/minimal.tar && cp /usr/share/qemu/images/linux-riscv64-Image /work/minimal.qemu-kernel'
+      'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX < /cache/vc.tar && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
     ];
     
     console.log(`Executing: ${snapshotCommand.join(' ')}`);
@@ -560,10 +611,11 @@ function buildLinuxKitImage(yamlPath: string, profile: string) {
       const cartesiCommand = [
         'docker', 'run', '--rm',
         '-v', `${currentDir}:/work`,
-        '-w', '/work',
+        '-v', `${cacheDir}:/cache`,
+        '-w', '/cache',
         'ghcr.io/zippiehq/vcr-snapshot-builder',
         'bash', '-c',
-        'rm -rf /work/minimal-cartesi-machine-snapshot && cartesi-machine --flash-drive="label:root,filename:/work/minimal.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/work/minimal-cartesi-machine-snapshot'
+        'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
       ];
       
       console.log(`Executing: ${cartesiCommand.join(' ')}`);
@@ -582,10 +634,11 @@ function buildLinuxKitImage(yamlPath: string, profile: string) {
       const compressCommand = [
         'docker', 'run', '--rm',
         '-v', `${currentDir}:/work`,
-        '-w', '/work',
+        '-v', `${cacheDir}:/cache`,
+        '-w', '/cache',
         'ghcr.io/zippiehq/vcr-snapshot-builder',
         'bash', '-c',
-        'SOURCE_DATE_EPOCH=0 mksquashfs /work/minimal-cartesi-machine-snapshot /work/minimal-cartesi-machine-snapshot.squashfs -comp zstd -reproducible'
+        'SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible'
       ];
       
       console.log(`Executing: ${compressCommand.join(' ')}`);
@@ -604,10 +657,11 @@ function buildLinuxKitImage(yamlPath: string, profile: string) {
       const verityCommand = [
         'docker', 'run', '--rm',
         '-v', `${currentDir}:/work`,
-        '-w', '/work',
+        '-v', `${cacheDir}:/cache`,
+        '-w', '/cache',
         'ghcr.io/zippiehq/vcr-snapshot-builder',
         'bash', '-c',
-        'veritysetup --root-hash-file /work/minimal-cartesi-machine-snapshot.squashfs.root-hash format /work/minimal-cartesi-machine-snapshot.squashfs /work/minimal-cartesi-machine-snapshot.squashfs.verity'
+        'veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs.verity'
       ];
       
       console.log(`Executing: ${verityCommand.join(' ')}`);
@@ -625,6 +679,60 @@ function buildLinuxKitImage(yamlPath: string, profile: string) {
     
   } catch (err) {
     console.error('Error building LinuxKit image:', err);
+    process.exit(1);
+  }
+}
+
+function pruneVcr() {
+  console.log('🧹 Pruning VCR environment...');
+  
+  try {
+    // Stop and remove vcr-registry
+    console.log('Stopping vcr-registry...');
+    try {
+      execSync('docker stop vcr-registry', { stdio: 'ignore' });
+      execSync('docker rm vcr-registry', { stdio: 'ignore' });
+      console.log('✅ vcr-registry stopped and removed');
+    } catch (err) {
+      console.log('ℹ️  vcr-registry not running or already removed');
+    }
+    
+    // Remove vcr-builder
+    console.log('Removing vcr-builder...');
+    try {
+      execSync('docker buildx rm vcr-builder', { stdio: 'ignore' });
+      console.log('✅ vcr-builder removed');
+    } catch (err) {
+      console.log('ℹ️  vcr-builder not found or already removed');
+    }
+    
+    // Remove vcr-network
+    console.log('Removing vcr-network...');
+    try {
+      execSync('docker network rm vcr-network', { stdio: 'ignore' });
+      console.log('✅ vcr-network removed');
+    } catch (err) {
+      console.log('ℹ️  vcr-network not found or already removed');
+    }
+    
+    // Wipe cache directory
+    console.log('Wiping cache directory...');
+    const cacheDir = join(homedir(), '.cache', 'vcr');
+    if (existsSync(cacheDir)) {
+      try {
+        execSync(`rm -rf "${cacheDir}"`, { stdio: 'ignore' });
+        console.log('✅ Cache directory wiped');
+      } catch (err) {
+        console.error('⚠️  Could not wipe cache directory:', err);
+      }
+    } else {
+      console.log('ℹ️  Cache directory does not exist');
+    }
+    
+    console.log('✅ VCR environment pruned successfully');
+    
+  } catch (err) {
+    console.error('Error pruning VCR environment:', err);
     process.exit(1);
   }
 }
@@ -708,6 +816,10 @@ function main() {
       
     case 'linuxkit':
       runLinuxkitContainer();
+      break;
+      
+    case 'prune':
+      pruneVcr();
       break;
       
     default:
