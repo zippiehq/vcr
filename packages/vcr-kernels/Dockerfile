@@ -29,8 +29,6 @@ RUN tar xzf dep/linux-6.5.13-ctsi-1.tar.gz \
   --strip-components=1 --one-top-level=linux && \
   rm dep/linux-6.5.13-ctsi-1.tar.gz
 
-
-
 # Extract OpenSBI
 RUN tar xzf dep/opensbi-1.3.1-ctsi-2.tar.gz \
   --strip-components=1 --one-top-level=opensbi && \
@@ -53,7 +51,6 @@ RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
     ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) defconfig
 
 RUN echo "CONFIG_RISCV_SBI_V01=y" >> .config
-#RUN diff -ru /work/linux/.config /work/linux-2/.config
 
 RUN KERNEL_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" && \
     ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="$(KERNEL_TIMESTAMP)" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
@@ -65,30 +62,11 @@ RUN make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS_COMPILE=riscv64-lin
 # Final stage: copy artifacts to clean image
 FROM debian:bookworm-slim
 
-# Install required packages
-RUN apt-get update && \
-    apt-get install --no-install-recommends -y \
-        lua5.4 \
-        libslirp0 \
-        squashfs-tools \
-        cryptsetup \
-        wget \
-        qemu-system-misc \
-        ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /usr/share/cartesi-machine/images /usr/share/qemu/images
 
-RUN mkdir -p /artifacts
-
-# Fetch and install Cartesi machine emulator
-ARG TARGETARCH
-RUN wget -O /tmp/machine-emulator.deb https://github.com/cartesi/machine-emulator/releases/download/v0.19.0/machine-emulator_${TARGETARCH}.deb && \
-    dpkg -i /tmp/machine-emulator.deb && \
-    rm /tmp/machine-emulator.deb
-
-# Copy kernel assets from vcr-kernels image
-COPY --from=ghcr.io/zippiehq/vcr-kernels:latest /usr/share/cartesi-machine/images/linux.bin /usr/share/cartesi-machine/images/linux.bin
-COPY --from=ghcr.io/zippiehq/vcr-kernels:latest /usr/share/cartesi-machine/images/linux.bin.config /usr/share/cartesi-machine/images/linux.bin.config
-COPY --from=ghcr.io/zippiehq/vcr-kernels:latest /usr/share/qemu/images/linux-riscv64-Image /usr/share/qemu/images/linux-riscv64-Image
-COPY --from=ghcr.io/zippiehq/vcr-kernels:latest /usr/share/qemu/images/linux-riscv64-Image.config /usr/share/qemu/images/linux-riscv64-Image.config
+COPY --from=0 /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin /usr/share/cartesi-machine/images/linux.bin
+COPY --from=0 /work/linux/.config /usr/share/cartesi-machine/images/linux.bin.config
+COPY --from=0 /work/linux-2/arch/riscv/boot/Image /usr/share/qemu/images/linux-riscv64-Image
+COPY --from=0 /work/linux-2/.config /usr/share/qemu/images/linux-riscv64-Image.config
 
 CMD ["/bin/bash"] 

@@ -1,0 +1,6 @@
+{
+  "name": "vcr-kernels",
+  "version": "1.0.0",
+  "description": "VCR Kernel Assets - RISC-V Linux kernels and OpenSBI firmware",
+  "private": true
+} 

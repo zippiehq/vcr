@@ -9,6 +9,19 @@ target "docker-platforms" {
   ]
 }
 
+target "docker-platforms-amd64-only" {
+  platforms = [
+    "linux/amd64"
+  ]
+}
+
+target "vcr-kernels" {
+  inherits = ["docker-metadata-action", "docker-platforms-amd64-only"]
+  context = "./packages/vcr-kernels"
+  dockerfile = "Dockerfile"
+  tags = ["ghcr.io/zippiehq/vcr-kernels:latest"]
+}
+
 target "snapshot-builder" {
   inherits = ["docker-metadata-action", "docker-platforms"]
   context = "./packages/snapshot-builder"
@@ -24,5 +37,5 @@ target "linuxkit-builder" {
 }
 
 target "default" {
-  inherits = ["snapshot-builder", "linuxkit-builder"]
+  inherits = ["vcr-kernels", "snapshot-builder", "linuxkit-builder"]
 } 
