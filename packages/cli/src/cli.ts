@@ -725,6 +725,14 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         console.log('✅ Verity files already exist, skipping verity creation');
       } else {
         console.log('Creating verity hash tree...');
+        
+        // Extract digest without sha256: prefix for salt
+        const salt = imageDigest ? imageDigest.replace('sha256:', '') : '';
+        
+        // Generate deterministic UUID from image digest (first 32 chars of digest)
+        const uuidBase = salt.substring(0, 32);
+        const deterministicUuid = `${uuidBase.substring(0, 8)}-${uuidBase.substring(8, 12)}-${uuidBase.substring(12, 16)}-${uuidBase.substring(16, 20)}-${uuidBase.substring(20, 32)}`;
+        
         const verityCommand = [
           'docker', 'run', '--rm',
           '-v', `${currentDir}:/work`,
@@ -732,7 +740,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          'veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs.verity'
+          `veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash --salt=${salt} --uuid=${deterministicUuid} format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs.verity`
         ];
         
         console.log(`Executing: ${verityCommand.join(' ')}`);
