@@ -337,11 +337,72 @@ function getComposeCacheDirectory(): string {
   return composeCacheDir;
 }
 
-function generateDockerCompose(imageTag: string, imageDigest?: string) {
+function generateDockerCompose(imageTag: string, profile: string, imageDigest?: string) {
   // Use tag + SHA256 format if digest is available, otherwise just the tag
   const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
   
   const pathHash = getPathHash();
+  const cacheDir = getCacheDirectory(imageDigest);
+  
+  // For test profile, use snapshot-builder with QEMU
+  const isolatedServiceConfig = profile === 'test' ? {
+    image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
+    container_name: `${pathHash}-vcr-isolated-service`,
+    hostname: 'vcr-isolated-service',
+    networks: ['internal_net'],
+    volumes: [
+      `${cacheDir}:/work`,
+      `${pathHash}_vcr_shared_data:/media/vcr`
+    ],
+    command: [
+      'qemu-system-riscv64',
+      '--machine', 'virt',
+      '--kernel', '/work/vc.qemu-kernel',
+      '-nographic',
+      '-append', 'root=/dev/vda rootfstype=squashfs console=ttyS0',
+      '-drive', 'file=/work/vc.squashfs,format=raw,if=virtio',
+      '-netdev', 'user,id=net0,hostfwd=tcp::8080-:8080',
+      '-device', 'virtio-net-pci,netdev=net0'
+    ],
+    healthcheck: {
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
+      interval: '30s',
+      timeout: '10s',
+      retries: 3,
+      start_period: '40s'
+    },
+    labels: [
+      'traefik.enable=true',
+      'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
+      'traefik.http.routers.isolated.entrypoints=web',
+      'traefik.http.services.isolated.loadbalancer.server.port=8080',
+      'traefik.http.services.isolated.loadbalancer.server.scheme=http',
+      'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
+      'traefik.http.routers.isolated.middlewares=strip-function'
+    ]
+  } : {
+    image: imageReference,
+    container_name: `${pathHash}-vcr-isolated-service`,
+    hostname: 'vcr-isolated-service',
+    networks: ['internal_net'],
+    volumes: [`${pathHash}_vcr_shared_data:/media/vcr`],
+    healthcheck: {
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
+      interval: '30s',
+      timeout: '10s',
+      retries: 3,
+      start_period: '40s'
+    },
+    labels: [
+      'traefik.enable=true',
+      'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
+      'traefik.http.routers.isolated.entrypoints=web',
+      'traefik.http.services.isolated.loadbalancer.server.port=8080',
+      'traefik.http.services.isolated.loadbalancer.server.scheme=http',
+      'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
+      'traefik.http.routers.isolated.middlewares=strip-function'
+    ]
+  };
   
   const composeConfig = {
     services: {
@@ -368,29 +429,7 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
           'traefik.http.routers.traefik.entrypoints=traefik'
         ]
       },
-      isolated_service: {
-        image: imageReference,
-        container_name: `${pathHash}-vcr-isolated-service`,
-        hostname: 'vcr-isolated-service',
-        networks: ['internal_net'],
-        volumes: [`${pathHash}_vcr_shared_data:/media/vcr`],
-        healthcheck: {
-          test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
-          interval: '30s',
-          timeout: '10s',
-          retries: 3,
-          start_period: '40s'
-        },
-        labels: [
-          'traefik.enable=true',
-          'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
-          'traefik.http.routers.isolated.entrypoints=web',
-          'traefik.http.services.isolated.loadbalancer.server.port=8080',
-          'traefik.http.services.isolated.loadbalancer.server.scheme=http',
-          'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
-          'traefik.http.routers.isolated.middlewares=strip-function'
-        ]
-      },
+      isolated_service: isolatedServiceConfig,
       internet_service: {
         image: 'alpine',
         container_name: `${pathHash}-vcr-guest-agent`,
@@ -481,7 +520,7 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     
     // Generate or update Docker Compose configuration
     if (needsUpdate) {
-      generateDockerCompose(imageTag, imageDigest);
+      generateDockerCompose(imageTag, profile, imageDigest);
       console.log(`Generated Docker Compose config: ${composePath}`);
     }
     
