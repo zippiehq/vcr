@@ -483,10 +483,23 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     
     // Start services
     console.log('Starting services with Docker Compose...');
-    const upCommand = needsUpdate 
-      ? `docker compose -f ${composePath} up -d --wait --force-recreate isolated_service`
-      : `docker compose -f ${composePath} up -d --wait`;
-    execSync(upCommand, { stdio: 'inherit' });
+    if (needsUpdate) {
+      // Check if containers already exist
+      const containersExist = existsSync(composePath) && execSync(`docker compose -f ${composePath} ps --services --filter "status=running"`, { encoding: 'utf8' }).trim().length > 0;
+      
+      if (containersExist) {
+        // Containers exist, force recreate only the isolated_service
+        console.log('Force recreating isolated_service...');
+        execSync(`docker compose -f ${composePath} up -d --force-recreate isolated_service`, { stdio: 'inherit' });
+      } else {
+        // First startup, just start all services normally
+        console.log('Starting all services...');
+        execSync(`docker compose -f ${composePath} up -d --wait`, { stdio: 'inherit' });
+      }
+    } else {
+      // Just ensure all services are running
+      execSync(`docker compose -f ${composePath} up -d --wait`, { stdio: 'inherit' });
+    }
     
     // Wait for health checks
     console.log('Waiting for health checks...');
@@ -515,6 +528,8 @@ Usage:
   vcr up [-t <name:tag>] [options]    Build and run development environment with isolated networking
   vcr down                           Stop development environment
   vcr logs [-f|--follow]             View development environment logs
+  vcr exec <command>                 Execute command in isolated service container
+  vcr shell                          Open shell in isolated service container
   vcr prune [--local]                Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
@@ -548,6 +563,9 @@ Examples:
   vcr down                                             # Stop development environment
   vcr logs                                             # View logs
   vcr logs -f                                          # Follow logs in real-time
+  vcr exec ls -la                                      # List files in container
+  vcr exec cat /app/config.json                        # View file in container
+  vcr shell                                            # Open interactive shell
   vcr prune                                            # Clean up entire VCR environment
   vcr prune --local                                    # Clean up only current project
 
@@ -555,6 +573,8 @@ Notes:
   - Docker Compose files are stored in ~/.cache/vcr/<path-hash>/ for each project directory
   - Use 'vcr down' to stop the environment (no need to specify compose file path)
   - Use 'vcr logs' to view logs (no need to specify compose file path)
+  - Use 'vcr exec' to run commands in the application container
+  - Use 'vcr shell' to get an interactive shell in the application container
   - Default image tags are based on the current directory path hash
   - vcr up automatically detects image changes and restarts containers when needed
 
@@ -1199,6 +1219,53 @@ function main() {
         }
       } catch (err) {
         console.error('Error viewing logs:', err);
+        process.exit(1);
+      }
+      break;
+      
+    case 'exec':
+      try {
+        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+        if (existsSync(composePath)) {
+          // Get the command to execute (everything after 'exec')
+          const execArgs = args.slice(1);
+          if (execArgs.length === 0) {
+            console.error('Error: vcr exec requires a command to execute');
+            console.log('Example: vcr exec ls -la');
+            process.exit(1);
+          }
+          
+          const command = execArgs.join(' ');
+          const result = execSync(`docker compose -f ${composePath} exec isolated_service ${command}`, { stdio: 'inherit' });
+          return result;
+        } else {
+          console.log('ℹ️  No docker-compose.dev.json found for current directory');
+          console.log('Run "vcr up" first to start the development environment');
+        }
+      } catch (err) {
+        // Return the exit code from the failed command
+        if (err && typeof err === 'object' && 'status' in err && typeof err.status === 'number') {
+          process.exit(err.status);
+        } else {
+          console.error('Error executing command:', err);
+          process.exit(1);
+        }
+      }
+      break;
+      
+    case 'shell':
+      try {
+        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+        if (existsSync(composePath)) {
+          console.log('Opening shell in isolated_service container...');
+          console.log('Type "exit" to return to your host shell');
+          execSync(`docker compose -f ${composePath} exec isolated_service /bin/sh`, { stdio: 'inherit' });
+        } else {
+          console.log('ℹ️  No docker-compose.dev.json found for current directory');
+          console.log('Run "vcr up" first to start the development environment');
+        }
+      } catch (err) {
+        console.error('Error opening shell:', err);
         process.exit(1);
       }
       break;
