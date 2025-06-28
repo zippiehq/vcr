@@ -530,6 +530,8 @@ Usage:
   vcr logs [-f|--follow]             View development environment logs
   vcr exec <command>                 Execute command in isolated service container
   vcr shell                          Open shell in isolated service container
+  vcr cp <source> <destination>      Copy files to/from isolated service container
+  vcr cat <file-path>                View file contents in isolated service container
   vcr prune [--local]                Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
@@ -566,6 +568,11 @@ Examples:
   vcr exec ls -la                                      # List files in container
   vcr exec cat /app/config.json                        # View file in container
   vcr shell                                            # Open interactive shell
+  vcr cp local-file.txt /app/remote-file.txt           # Copy file to container
+  vcr cp /app/logs.txt ./local-logs.txt                # Copy file from container
+  vcr cp ./config/ /app/config/                        # Copy directory to container
+  vcr cat /app/config.json                             # View file in container
+  vcr cat /app/logs/app.log                            # View log file
   vcr prune                                            # Clean up entire VCR environment
   vcr prune --local                                    # Clean up only current project
 
@@ -575,6 +582,9 @@ Notes:
   - Use 'vcr logs' to view logs (no need to specify compose file path)
   - Use 'vcr exec' to run commands in the application container
   - Use 'vcr shell' to get an interactive shell in the application container
+  - Use 'vcr cp' to copy files to/from the application container
+  - Use 'vcr cat' to quickly view file contents in the application container
+  - Container paths should start with /app/ to avoid ambiguity
   - Default image tags are based on the current directory path hash
   - vcr up automatically detects image changes and restarts containers when needed
 
@@ -1267,6 +1277,101 @@ function main() {
       } catch (err) {
         console.error('Error opening shell:', err);
         process.exit(1);
+      }
+      break;
+      
+    case 'cp':
+      try {
+        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+        if (existsSync(composePath)) {
+          // Get the source and destination arguments
+          const cpArgs = args.slice(1);
+          if (cpArgs.length !== 2) {
+            console.error('Error: vcr cp requires exactly 2 arguments: <source> <destination>');
+            console.log('Examples:');
+            console.log('  vcr cp local-file.txt /app/remote-file.txt');
+            console.log('  vcr cp /app/logs.txt ./local-logs.txt');
+            console.log('  vcr cp ./config/ /app/config/');
+            process.exit(1);
+          }
+          
+          const [source, destination] = cpArgs;
+          const pathHash = getPathHash();
+          const containerName = `${pathHash}-vcr-isolated-service`;
+          
+          // Determine if it's host->container or container->host
+          const isHostToContainer = !source.includes(':') && !source.startsWith('/app/');
+          const isContainerToHost = destination.includes(':') || destination.startsWith('./') || destination.startsWith('../') || !destination.startsWith('/');
+          
+          if (isHostToContainer && isContainerToHost) {
+            console.error('Error: Ambiguous copy direction. Please specify container paths with /app/ prefix');
+            console.log('Examples:');
+            console.log('  vcr cp local-file.txt /app/remote-file.txt  # host -> container');
+            console.log('  vcr cp /app/logs.txt ./local-logs.txt      # container -> host');
+            process.exit(1);
+          }
+          
+          if (isHostToContainer) {
+            // Copy from host to container
+            console.log(`Copying ${source} to container:${destination}`);
+            execSync(`docker cp "${source}" ${containerName}:${destination}`, { stdio: 'inherit' });
+          } else {
+            // Copy from container to host
+            console.log(`Copying container:${source} to ${destination}`);
+            execSync(`docker cp ${containerName}:${source} "${destination}"`, { stdio: 'inherit' });
+          }
+        } else {
+          console.log('ℹ️  No docker-compose.dev.json found for current directory');
+          console.log('Run "vcr up" first to start the development environment');
+        }
+      } catch (err) {
+        // Return the exit code from the failed command
+        if (err && typeof err === 'object' && 'status' in err && typeof err.status === 'number') {
+          process.exit(err.status);
+        } else {
+          console.error('Error copying files:', err);
+          process.exit(1);
+        }
+      }
+      break;
+      
+    case 'cat':
+      try {
+        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+        if (existsSync(composePath)) {
+          // Get the file path argument
+          const catArgs = args.slice(1);
+          if (catArgs.length !== 1) {
+            console.error('Error: vcr cat requires exactly 1 argument: <file-path>');
+            console.log('Examples:');
+            console.log('  vcr cat /app/config.json');
+            console.log('  vcr cat /app/logs/app.log');
+            console.log('  vcr cat /app/data/output.txt');
+            process.exit(1);
+          }
+          
+          const filePath = catArgs[0];
+          
+          // Ensure the path starts with /app/ for clarity
+          if (!filePath.startsWith('/app/')) {
+            console.error('Error: Container file paths should start with /app/');
+            console.log('Example: vcr cat /app/config.json');
+            process.exit(1);
+          }
+          
+          execSync(`docker compose -f ${composePath} exec isolated_service cat ${filePath}`, { stdio: 'inherit' });
+        } else {
+          console.log('ℹ️  No docker-compose.dev.json found for current directory');
+          console.log('Run "vcr up" first to start the development environment');
+        }
+      } catch (err) {
+        // Return the exit code from the failed command
+        if (err && typeof err === 'object' && 'status' in err && typeof err.status === 'number') {
+          process.exit(err.status);
+        } else {
+          console.error('Error viewing file:', err);
+          process.exit(1);
+        }
       }
       break;
       
