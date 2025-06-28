@@ -362,8 +362,12 @@ function generateDockerCompose(imageTag: string, profile: string, imageDigest?: 
       '-append', 'root=/dev/vda rootfstype=squashfs console=ttyS0',
       '-drive', 'file=/work/vc.squashfs,format=raw,if=virtio',
       '-netdev', 'user,id=net0,hostfwd=tcp::8080-:8080',
-      '-device', 'virtio-net-pci,netdev=net0'
+      '-device', 'virtio-net-pci,netdev=net0',
+      '-monitor', 'none',
+      '-serial', 'stdio'
     ],
+    tty: true,
+    stdin_open: true,
     healthcheck: {
       test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
       interval: '30s',
