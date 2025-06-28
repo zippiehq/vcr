@@ -484,7 +484,7 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     // Start services
     console.log('Starting services with Docker Compose...');
     const upCommand = needsUpdate 
-      ? `docker compose -f ${composePath} up -d --force-recreate --wait`
+      ? `docker compose -f ${composePath} up -d --wait --force-recreate isolated_service`
       : `docker compose -f ${composePath} up -d --wait`;
     execSync(upCommand, { stdio: 'inherit' });
     
