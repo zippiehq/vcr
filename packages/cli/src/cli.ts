@@ -341,11 +341,14 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
   // Use tag + SHA256 format if digest is available, otherwise just the tag
   const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
   
+  const pathHash = getPathHash();
+  
   const composeConfig = {
     services: {
       traefik: {
         image: 'traefik:v2.10',
-        container_name: 'vcr-traefik',
+        container_name: `${pathHash}-vcr-traefik`,
+        hostname: 'vcr-traefik',
         command: [
           '--api.insecure=true',
           '--api.dashboard=false',
@@ -367,9 +370,10 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
       },
       isolated_service: {
         image: imageReference,
-        container_name: 'vcr-isolated-service',
+        container_name: `${pathHash}-vcr-isolated-service`,
+        hostname: 'vcr-isolated-service',
         networks: ['internal_net'],
-        volumes: ['vcr_shared_data:/media/vcr'],
+        volumes: [`${pathHash}_vcr_shared_data:/media/vcr`],
         healthcheck: {
           test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
           interval: '30s',
@@ -389,10 +393,11 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
       },
       internet_service: {
         image: 'alpine',
-        container_name: 'vcr-guest-agent',
+        container_name: `${pathHash}-vcr-guest-agent`,
+        hostname: 'vcr-guest-agent',
         command: 'sh -c "mkdir -p /media/vcr/transient && sleep infinity"',
         networks: ['internal_net', 'external_net'],
-        volumes: ['vcr_shared_data:/media/vcr']
+        volumes: [`${pathHash}_vcr_shared_data:/media/vcr`]
       }
     },
     networks: {
@@ -405,7 +410,7 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
       }
     },
     volumes: {
-      vcr_shared_data: {
+      [`${pathHash}_vcr_shared_data`]: {
         driver: 'local'
       }
     }
@@ -416,30 +421,71 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
   return composePath;
 }
 
-function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false) {
+function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false) {
   console.log('Starting development environment...');
   
   try {
-    // Clean up any existing VCR containers to prevent port conflicts
-    console.log('Cleaning up any existing VCR containers...');
+    // Check for potential port conflicts
+    console.log('Checking for potential port conflicts...');
     try {
-      execSync('docker stop vcr-traefik vcr-isolated-service vcr-guest-agent', { stdio: 'ignore' });
-      execSync('docker rm vcr-traefik vcr-isolated-service vcr-guest-agent', { stdio: 'ignore' });
-      console.log('✅ Existing VCR containers cleaned up');
+      // Get all running containers and their port mappings
+      const allContainers = execSync('docker ps --format "{{.Names}}:{{.Ports}}"', { encoding: 'utf8' }).trim();
+      const pathHash = getPathHash();
+      
+      // Check for containers using port 8080 that aren't ours
+      const containersUsing8080 = allContainers.split('\n').filter(line => 
+        line.includes(':8080') && !line.startsWith(`${pathHash}-vcr-`)
+      );
+      
+      if (containersUsing8080.length > 0) {
+        console.log('⚠️  Warning: Port 8080 is already in use by another container');
+        containersUsing8080.forEach(container => console.log(`   ${container}`));
+      }
     } catch (err) {
-      console.log('ℹ️  No existing VCR containers to clean up');
+      console.log('ℹ️  Could not check for port conflicts');
     }
     
     // Build the container
     const imageDigest = buildImage(imageTag, profile, cacheDir, forceRebuild);
     
-    // Generate Docker Compose configuration
-    const composePath = generateDockerCompose(imageTag, imageDigest);
-    console.log(`Generated Docker Compose config: ${composePath}`);
+    const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+    let needsUpdate = false;
+    
+    // Check if compose file exists and if tag matches
+    if (!forceRestart && existsSync(composePath)) {
+      try {
+        const composeContent = readFileSync(composePath, 'utf8');
+        const composeConfig = JSON.parse(composeContent);
+        const currentImage = composeConfig.services?.isolated_service?.image;
+        
+        if (currentImage) {
+          const expectedImage = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
+          if (currentImage !== expectedImage) {
+            console.log(`🔄 Image tag changed from ${currentImage} to ${expectedImage}`);
+            needsUpdate = true;
+          } else {
+            console.log('✅ Image tag matches existing compose file');
+          }
+        }
+      } catch (err) {
+        console.log('⚠️  Could not read existing compose file, will regenerate');
+        needsUpdate = true;
+      }
+    } else {
+      needsUpdate = true;
+    }
+    
+    // Generate or update Docker Compose configuration
+    if (needsUpdate) {
+      generateDockerCompose(imageTag, imageDigest);
+      console.log(`Generated Docker Compose config: ${composePath}`);
+    }
     
     // Start services
     console.log('Starting services with Docker Compose...');
-    const upCommand = `docker compose -f ${composePath} up -d --wait`;
+    const upCommand = needsUpdate 
+      ? `docker compose -f ${composePath} up -d --force-recreate --wait`
+      : `docker compose -f ${composePath} up -d --wait`;
     execSync(upCommand, { stdio: 'inherit' });
     
     // Wait for health checks
@@ -477,6 +523,7 @@ Build Options:
   --profile <dev|test|prod|prod-debug>  Build profile (default: dev)
   --cache-dir <dir>                 Optional path to store exported build metadata
   --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
+  --force-restart                   Force restart containers even if image tag matches (up command only)
 
 Build Profiles:
   dev        Native platform only, no dev tools, no attestation
@@ -494,6 +541,7 @@ Examples:
   vcr up -t web3link/myapp:1.2.3                      # Build and run dev environment
   vcr up -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
   vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
+  vcr up --force-restart                             # Force restart containers
   vcr down                                             # Stop development environment
   vcr logs                                             # View logs
   vcr logs -f                                          # Follow logs in real-time
@@ -504,6 +552,7 @@ Notes:
   - Use 'vcr down' to stop the environment (no need to specify compose file path)
   - Use 'vcr logs' to view logs (no need to specify compose file path)
   - Default image tags are based on the current directory path hash
+  - vcr up automatically detects image changes and restarts containers when needed
 
 Prerequisites:
   - Docker and buildx installed
@@ -1024,6 +1073,7 @@ function main() {
       let runProfile = 'dev';
       let runCacheDir: string | undefined;
       let runForceRebuild = false;
+      let runForceRestart = false;
       
       // Parse run arguments
       for (let i = 1; i < args.length; i++) {
@@ -1056,6 +1106,8 @@ function main() {
           }
         } else if (arg === '--force-rebuild') {
           runForceRebuild = true;
+        } else if (arg === '--force-restart') {
+          runForceRestart = true;
         }
       }
       
@@ -1070,7 +1122,7 @@ function main() {
         checkRiscv64Support();
       }
       
-      runDevEnvironment(runImageTag, runProfile, runCacheDir, runForceRebuild);
+      runDevEnvironment(runImageTag, runProfile, runCacheDir, runForceRebuild, runForceRestart);
       break;
       
     case 'down':
