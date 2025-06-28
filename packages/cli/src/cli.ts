@@ -284,7 +284,7 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
     // For test and prod profiles, also build LinuxKit image
     if (profile === 'test' || profile === 'prod') {
       console.log(`\n🔄 Building LinuxKit image for ${profile} profile...`);
-      const yamlPath = generateLinuxKitYaml(imageTag, cacheDir, imageDigest);
+      const yamlPath = generateLinuxKitYaml(imageTag, profile, cacheDir, imageDigest);
       buildLinuxKitImage(yamlPath, profile, imageDigest, cacheDir, forceRebuild);
     }
     
@@ -654,8 +654,12 @@ insecure = true
   }
 }
 
-function generateLinuxKitYaml(imageTag: string, cacheDir?: string, imageDigest?: string) {
+function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir?: string, imageDigest?: string) {
   const imageReference = imageDigest ? `${imageTag}@${imageDigest}` : imageTag;
+  
+  // Add net: host for test and prod profiles
+  const netConfig = (profile === 'test' || profile === 'prod') ? '    net: host' : '';
+  
   const yamlConfig = `init:
   - ghcr.io/zippiehq/vcr-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
   - ghcr.io/zippiehq/vcr-runc@sha256:3f0a1027ab7507f657cafd28abff329366c0e774714eac48c4d4c10f46778596
@@ -671,6 +675,7 @@ services:
      - INSECURE=true
   - name: app
     image: localhost:5001/${imageReference}
+${netConfig}
 `;
   
   const yamlPath = cacheDir ? join(cacheDir, 'vc.yml') : join(cwd(), 'vc.yml');
