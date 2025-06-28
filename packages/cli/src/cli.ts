@@ -342,7 +342,6 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
   const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
   
   const composeConfig = {
-    version: '3.8',
     services: {
       traefik: {
         image: 'traefik:v2.10',
