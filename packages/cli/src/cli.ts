@@ -352,12 +352,13 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
         image: imageReference,
         container_name: 'vcr-isolated-service',
         networks: ['internal_net'],
+        volumes: ['vcr_shared_data:/media'],
         healthcheck: {
           test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
           interval: '30s',
           timeout: '10s',
           retries: 3,
-          start_period: '1s'
+          start_period: '40s'
         },
         labels: [
           'traefik.enable=true',
@@ -371,9 +372,10 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
       },
       internet_service: {
         image: 'alpine',
-        container_name: 'vcr-internet-service',
+        container_name: 'vcr-guest-agent',
         command: 'sleep infinity',
-        networks: ['internal_net', 'external_net']
+        networks: ['internal_net', 'external_net'],
+        volumes: ['vcr_shared_data:/media']
       }
     },
     networks: {
@@ -383,6 +385,11 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
       },
       external_net: {
         driver: 'bridge'
+      }
+    },
+    volumes: {
+      vcr_shared_data: {
+        driver: 'local'
       }
     }
   };
@@ -399,8 +406,8 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     // Clean up any existing VCR containers to prevent port conflicts
     console.log('Cleaning up any existing VCR containers...');
     try {
-      execSync('docker stop vcr-traefik vcr-isolated-service vcr-internet-service', { stdio: 'ignore' });
-      execSync('docker rm vcr-traefik vcr-isolated-service vcr-internet-service', { stdio: 'ignore' });
+      execSync('docker stop vcr-traefik vcr-isolated-service vcr-guest-agent', { stdio: 'ignore' });
+      execSync('docker rm vcr-traefik vcr-isolated-service vcr-guest-agent', { stdio: 'ignore' });
       console.log('✅ Existing VCR containers cleaned up');
     } catch (err) {
       console.log('ℹ️  No existing VCR containers to clean up');
