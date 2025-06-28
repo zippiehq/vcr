@@ -33,8 +33,8 @@ vcr down                    # Stop environment
 ```bash
 vcr logs                    # View logs
 vcr logs -f                 # Follow logs in real-time
-vcr exec ls -la             # Run command in isolated service container
-vcr shell                   # Open shell in isolated service container
+vcr exec ls -la             # Run command in container
+vcr shell                   # Open shell in container
 vcr cp local.txt /app/      # Copy file to container
 vcr cp /app/log.txt ./      # Copy file from container
 vcr cat /app/config.json    # View file in container

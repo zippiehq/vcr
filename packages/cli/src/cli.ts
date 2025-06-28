@@ -533,10 +533,10 @@ Usage:
   vcr up [-t <name:tag>] [options]    Build and run development environment with isolated networking
   vcr down                           Stop development environment
   vcr logs [-f|--follow]             View development environment logs
-  vcr exec <command>                 Execute command in isolated service container
-  vcr shell                          Open shell in isolated service container
-  vcr cp <source> <destination>      Copy files to/from isolated service container
-  vcr cat <file-path>                View file contents in isolated service container
+  vcr exec <command>                 Execute command in container
+  vcr shell                          Open shell in container
+  vcr cp <source> <destination>      Copy files to/from container
+  vcr cat <file-path>                View file contents in container
   vcr prune [--local]                Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
