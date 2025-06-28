@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Remove build dependencies
 RUN apk del .build-deps
 
+RUN apk add --no-cache curl
 # Copy application code
 COPY app.py .
 

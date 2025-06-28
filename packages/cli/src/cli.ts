@@ -357,7 +357,7 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
           interval: '30s',
           timeout: '10s',
           retries: 3,
-          start_period: '40s'
+          start_period: '1s'
         },
         labels: [
           'traefik.enable=true',
