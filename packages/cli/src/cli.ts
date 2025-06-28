@@ -214,7 +214,7 @@ function verifyRegistryConnectivity() {
   }
 }
 
-function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false) {
+function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
@@ -286,6 +286,8 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
       const yamlPath = generateLinuxKitYaml(imageTag, cacheDir, imageDigest);
       buildLinuxKitImage(yamlPath, profile, imageDigest, cacheDir, forceRebuild);
     }
+    
+    return imageDigest;
   } catch (err) {
     console.error('Error building image:', err);
     process.exit(1);
@@ -317,7 +319,10 @@ function buildDevContainer() {
   }
 }
 
-function generateDockerCompose(imageName: string) {
+function generateDockerCompose(imageTag: string, imageDigest?: string) {
+  // Use tag + SHA256 format if digest is available, otherwise just the tag
+  const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
+  
   const composeConfig = {
     version: '3.8',
     services: {
@@ -341,7 +346,7 @@ function generateDockerCompose(imageName: string) {
         ]
       },
       isolated_service: {
-        image: imageName,
+        image: imageReference,
         container_name: 'vcr-isolated-service',
         networks: ['internal_net'],
         healthcheck: {
@@ -382,15 +387,15 @@ function generateDockerCompose(imageName: string) {
   return composePath;
 }
 
-function runDevEnvironment() {
+function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false) {
   console.log('Starting development environment...');
   
   try {
     // Build the container
-    const imageName = buildDevContainer();
+    const imageDigest = buildImage(imageTag, profile, cacheDir, forceRebuild);
     
     // Generate Docker Compose configuration
-    const composePath = generateDockerCompose(imageName);
+    const composePath = generateDockerCompose(imageTag, imageDigest);
     console.log(`Generated Docker Compose config: ${composePath}`);
     
     // Start services
@@ -453,7 +458,7 @@ vcr CLI - Verifiable Container Runner
 
 Usage:
   vcr build -t <name:tag> [options]  Build and push container images
-  vcr run dev                        Build and run development environment with isolated networking
+  vcr run -t <name:tag> [options]    Build and run development environment with isolated networking
   vcr linuxkit                       Run linuxkit container with current directory and Docker socket mounted
   vcr prune                          Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
@@ -475,7 +480,9 @@ Examples:
   vcr build -t web3link/myapp:1.2.3 --profile test     # RISC-V with dev tools
   vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
   vcr build -t web3link/myapp:1.2.3 --force-rebuild    # Force rebuild all artifacts
-  vcr run dev                                          # Start dev environment
+  vcr run -t web3link/myapp:1.2.3                      # Build and run dev environment
+  vcr run -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
+  vcr run -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
   vcr linuxkit                                         # Start linuxkit container
   vcr prune                                            # Clean up VCR environment
 
@@ -975,13 +982,60 @@ function main() {
       break;
       
     case 'run':
-      if (args[1] === 'dev') {
-        runDevEnvironment();
-      } else {
-        console.error(`Unknown run command: ${args[1]}`);
-        showHelp();
+      checkBuildxAvailable();
+      checkVcrBuilder();
+      checkLocalRegistry();
+      
+      let runImageTag: string | undefined;
+      let runProfile = 'dev';
+      let runCacheDir: string | undefined;
+      let runForceRebuild = false;
+      
+      // Parse run arguments
+      for (let i = 1; i < args.length; i++) {
+        const arg = args[i];
+        const nextArg = args[i + 1];
+        
+        if (arg === '-t' || arg === '--tag') {
+          if (nextArg) {
+            runImageTag = nextArg;
+            i++; // Skip next argument
+          } else {
+            console.error('Error: -t/--tag requires a value');
+            process.exit(1);
+          }
+        } else if (arg === '--profile') {
+          if (nextArg) {
+            runProfile = nextArg;
+            i++; // Skip next argument
+          } else {
+            console.error('Error: --profile requires a value');
+            process.exit(1);
+          }
+        } else if (arg === '--cache-dir') {
+          if (nextArg) {
+            runCacheDir = nextArg;
+            i++; // Skip next argument
+          } else {
+            console.error('Error: --cache-dir requires a value');
+            process.exit(1);
+          }
+        } else if (arg === '--force-rebuild') {
+          runForceRebuild = true;
+        }
+      }
+      
+      if (!runImageTag) {
+        console.error('Error: -t/--tag is required for vcr run');
         process.exit(1);
       }
+      
+      // Check RISC-V support if needed
+      if (runProfile !== 'dev') {
+        checkRiscv64Support();
+      }
+      
+      runDevEnvironment(runImageTag, runProfile, runCacheDir, runForceRebuild);
       break;
       
     case 'linuxkit':
