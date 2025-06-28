@@ -322,7 +322,7 @@ function buildDevContainer() {
 
 function getPathHash(): string {
   const currentPath = cwd();
-  return createHash('sha256').update(currentPath).digest('hex').substring(0, 16);
+  return createHash('sha256').update(currentPath).digest('hex').substring(0, 8);
 }
 
 function getComposeCacheDirectory(): string {
@@ -466,15 +466,15 @@ function showHelp() {
 vcr CLI - Verifiable Container Runner
 
 Usage:
-  vcr build -t <name:tag> [options]  Build and push container images
-  vcr up -t <name:tag> [options]    Build and run development environment with isolated networking
+  vcr build [-t <name:tag>] [options]  Build and push container images
+  vcr up [-t <name:tag>] [options]    Build and run development environment with isolated networking
   vcr down                           Stop development environment
   vcr logs [-f|--follow]             View development environment logs
   vcr prune                          Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
 Build Options:
-  -t, --tag <name:tag>              Image name:tag (required)
+  -t, --tag <name:tag>              Image name:tag (optional, defaults to vcr-build-<path-hash>:latest)
   --profile <dev|test|prod|prod-debug>  Build profile (default: dev)
   --cache-dir <dir>                 Optional path to store exported build metadata
   --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
@@ -486,10 +486,12 @@ Build Profiles:
   prod-debug RISC-V 64-bit, with dev tools, with attestation
 
 Examples:
+  vcr build                          # Build with default tag (vcr-build-<path-hash>:latest)
   vcr build -t web3link/myapp:1.2.3                    # Fast dev loop (native)
   vcr build -t web3link/myapp:1.2.3 --profile test     # RISC-V with dev tools
   vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
   vcr build -t web3link/myapp:1.2.3 --force-rebuild    # Force rebuild all artifacts
+  vcr up                            # Build and run with default tag
   vcr up -t web3link/myapp:1.2.3                      # Build and run dev environment
   vcr up -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
   vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
@@ -502,6 +504,7 @@ Notes:
   - Docker Compose files are stored in ~/.cache/vcr/<path-hash>/ for each project directory
   - Use 'vcr down' to stop the environment (no need to specify compose file path)
   - Use 'vcr logs' to view logs (no need to specify compose file path)
+  - Default image tags are based on the current directory path hash
 
 Prerequisites:
   - Docker and buildx installed
@@ -1000,8 +1003,9 @@ function main() {
       }
       
       if (!imageTag) {
-        console.error('Error: -t/--tag is required');
-        process.exit(1);
+        const pathHash = getPathHash();
+        imageTag = `vcr-build-${pathHash}:latest`;
+        console.log(`No tag provided, using default: ${imageTag}`);
       }
       
       // Check RISC-V support if needed
@@ -1057,8 +1061,9 @@ function main() {
       }
       
       if (!runImageTag) {
-        console.error('Error: -t/--tag is required for vcr up');
-        process.exit(1);
+        const pathHash = getPathHash();
+        runImageTag = `vcr-build-${pathHash}:latest`;
+        console.log(`No tag provided, using default: ${runImageTag}`);
       }
       
       // Check RISC-V support if needed
