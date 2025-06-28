@@ -331,14 +331,14 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
         container_name: 'vcr-traefik',
         command: [
           '--api.insecure=true',
-          '--api.dashboard=true',
+          '--api.dashboard=false',
           '--api.debug=true',
           '--providers.docker=true',
           '--providers.docker.exposedbydefault=false',
           '--entrypoints.web.address=:8080',
           '--entrypoints.traefik.address=:9000'
         ],
-        ports: ['8080:8080', '9000:9000'],
+        ports: ['8080:8080'],
         volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: ['internal_net', 'external_net'],
         labels: [
@@ -424,7 +424,6 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     execSync(waitCommand, { stdio: 'inherit' });
     
     console.log('\nDevelopment environment is ready!');
-    console.log('- Traefik Dashboard: http://localhost:9000/dashboard/');
     console.log('- Function endpoint: http://localhost:8080/function');
     console.log('- Health check: http://localhost:8080/function/health');
     console.log('- To stop: docker compose -f docker-compose.dev.json down');
@@ -436,45 +435,14 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
   }
 }
 
-function runLinuxkitContainer() {
-  const currentDir = cwd();
-  const dockerSocket = '/var/run/docker.sock';
-  const imageName = process.env.LINUXKIT_IMAGE || 'linuxkit/linuxkit:latest';
-  
-  console.log('Starting linuxkit container...');
-  console.log(`Using image: ${imageName}`);
-  console.log(`Mounting current directory: ${currentDir} -> /work`);
-  console.log(`Mounting Docker socket: ${dockerSocket}`);
-  
-  try {
-    const command = [
-      'docker', 'run', '--rm',
-      '-v', `${currentDir}:/work`,
-      '-v', `${dockerSocket}:${dockerSocket}`,
-      '-w', '/work',
-      imageName
-    ].join(' ');
-    
-    console.log(`Executing: ${command}`);
-    execSync(command, { stdio: 'inherit' });
-  } catch (err) {
-    console.error('Error running linuxkit container:', err);
-    console.error('\nTroubleshooting:');
-    console.error('1. Make sure Docker is running');
-    console.error('2. Check if the image exists: docker images');
-    console.error('3. Set LINUXKIT_IMAGE environment variable to specify a different image');
-    process.exit(1);
-  }
-}
-
 function showHelp() {
   console.log(`
 vcr CLI - Verifiable Container Runner
 
 Usage:
   vcr build -t <name:tag> [options]  Build and push container images
-  vcr run -t <name:tag> [options]    Build and run development environment with isolated networking
-  vcr linuxkit                       Run linuxkit container with current directory and Docker socket mounted
+  vcr up -t <name:tag> [options]    Build and run development environment with isolated networking
+  vcr down                           Stop development environment
   vcr prune                          Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
@@ -495,10 +463,10 @@ Examples:
   vcr build -t web3link/myapp:1.2.3 --profile test     # RISC-V with dev tools
   vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
   vcr build -t web3link/myapp:1.2.3 --force-rebuild    # Force rebuild all artifacts
-  vcr run -t web3link/myapp:1.2.3                      # Build and run dev environment
-  vcr run -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
-  vcr run -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
-  vcr linuxkit                                         # Start linuxkit container
+  vcr up -t web3link/myapp:1.2.3                      # Build and run dev environment
+  vcr up -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
+  vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
+  vcr down                                             # Stop development environment
   vcr prune                                            # Clean up VCR environment
 
 Prerequisites:
@@ -876,6 +844,20 @@ function pruneVcr() {
   console.log('🧹 Pruning VCR environment...');
   
   try {
+    // Stop development environment first
+    console.log('Stopping development environment...');
+    try {
+      const composePath = join(cwd(), 'docker-compose.dev.json');
+      if (existsSync(composePath)) {
+        execSync(`docker compose -f ${composePath} down`, { stdio: 'ignore' });
+        console.log('✅ Development environment stopped');
+      } else {
+        console.log('ℹ️  No development environment to stop');
+      }
+    } catch (err) {
+      console.log('ℹ️  Could not stop development environment');
+    }
+    
     // Stop and remove vcr-registry
     console.log('Stopping vcr-registry...');
     try {
@@ -996,7 +978,7 @@ function main() {
       buildImage(imageTag, profile, cacheDir, forceRebuild);
       break;
       
-    case 'run':
+    case 'up':
       checkBuildxAvailable();
       checkVcrBuilder();
       checkLocalRegistry();
@@ -1041,7 +1023,7 @@ function main() {
       }
       
       if (!runImageTag) {
-        console.error('Error: -t/--tag is required for vcr run');
+        console.error('Error: -t/--tag is required for vcr up');
         process.exit(1);
       }
       
@@ -1053,8 +1035,20 @@ function main() {
       runDevEnvironment(runImageTag, runProfile, runCacheDir, runForceRebuild);
       break;
       
-    case 'linuxkit':
-      runLinuxkitContainer();
+    case 'down':
+      console.log('Stopping development environment...');
+      try {
+        const composePath = join(cwd(), 'docker-compose.dev.json');
+        if (existsSync(composePath)) {
+          execSync(`docker compose -f ${composePath} down`, { stdio: 'inherit' });
+          console.log('✅ Development environment stopped');
+        } else {
+          console.log('ℹ️  No docker-compose.dev.json found');
+        }
+      } catch (err) {
+        console.error('Error stopping development environment:', err);
+        process.exit(1);
+      }
       break;
       
     case 'prune':
