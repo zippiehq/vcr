@@ -331,18 +331,21 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
         container_name: 'vcr-traefik',
         command: [
           '--api.insecure=true',
+          '--api.dashboard=true',
+          '--api.debug=true',
           '--providers.docker=true',
           '--providers.docker.exposedbydefault=false',
-          '--entrypoints.web.address=:8080'
+          '--entrypoints.web.address=:8080',
+          '--entrypoints.traefik.address=:9000'
         ],
-        ports: ['8080:8080'],
+        ports: ['8080:8080', '9000:9000'],
         volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
         networks: ['internal_net', 'external_net'],
         labels: [
           'traefik.enable=true',
-          'traefik.http.routers.traefik.rule=Host(`localhost`) && PathPrefix(`/api`) || PathPrefix(`/dashboard`)',
+          'traefik.http.routers.traefik.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)',
           'traefik.http.routers.traefik.service=api@internal',
-          'traefik.http.routers.traefik.entrypoints=web'
+          'traefik.http.routers.traefik.entrypoints=traefik'
         ]
       },
       isolated_service: {
@@ -361,7 +364,9 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
           'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
           'traefik.http.routers.isolated.entrypoints=web',
           'traefik.http.services.isolated.loadbalancer.server.port=8080',
-          'traefik.http.services.isolated.loadbalancer.server.scheme=http'
+          'traefik.http.services.isolated.loadbalancer.server.scheme=http',
+          'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
+          'traefik.http.routers.isolated.middlewares=strip-function'
         ]
       },
       internet_service: {
@@ -391,6 +396,16 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
   console.log('Starting development environment...');
   
   try {
+    // Clean up any existing VCR containers to prevent port conflicts
+    console.log('Cleaning up any existing VCR containers...');
+    try {
+      execSync('docker stop vcr-traefik vcr-isolated-service vcr-internet-service', { stdio: 'ignore' });
+      execSync('docker rm vcr-traefik vcr-isolated-service vcr-internet-service', { stdio: 'ignore' });
+      console.log('✅ Existing VCR containers cleaned up');
+    } catch (err) {
+      console.log('ℹ️  No existing VCR containers to clean up');
+    }
+    
     // Build the container
     const imageDigest = buildImage(imageTag, profile, cacheDir, forceRebuild);
     
@@ -409,7 +424,7 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     execSync(waitCommand, { stdio: 'inherit' });
     
     console.log('\nDevelopment environment is ready!');
-    console.log('- Traefik Dashboard: http://localhost:8080/dashboard/');
+    console.log('- Traefik Dashboard: http://localhost:9000/dashboard/');
     console.log('- Function endpoint: http://localhost:8080/function');
     console.log('- Health check: http://localhost:8080/function/health');
     console.log('- To stop: docker compose -f docker-compose.dev.json down');
