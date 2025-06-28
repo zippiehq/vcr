@@ -515,7 +515,7 @@ Usage:
   vcr up [-t <name:tag>] [options]    Build and run development environment with isolated networking
   vcr down                           Stop development environment
   vcr logs [-f|--follow]             View development environment logs
-  vcr prune                          Clean up VCR environment (cache, registry, builder)
+  vcr prune [--local]                Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
 Build Options:
@@ -523,7 +523,10 @@ Build Options:
   --profile <dev|test|prod|prod-debug>  Build profile (default: dev)
   --cache-dir <dir>                 Optional path to store exported build metadata
   --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
-  --force-restart                   Force restart containers even if image tag matches (up command only)
+  --restart                         Force restart containers even if image tag matches (up command only)
+
+Prune Options:
+  --local                           Only clean current project's cache and stop its environment
 
 Build Profiles:
   dev        Native platform only, no dev tools, no attestation
@@ -541,11 +544,12 @@ Examples:
   vcr up -t web3link/myapp:1.2.3                      # Build and run dev environment
   vcr up -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
   vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
-  vcr up --force-restart                             # Force restart containers
+  vcr up --restart                                   # Force restart containers
   vcr down                                             # Stop development environment
   vcr logs                                             # View logs
   vcr logs -f                                          # Follow logs in real-time
-  vcr prune                                            # Clean up VCR environment
+  vcr prune                                            # Clean up entire VCR environment
+  vcr prune --local                                    # Clean up only current project
 
 Notes:
   - Docker Compose files are stored in ~/.cache/vcr/<path-hash>/ for each project directory
@@ -925,6 +929,46 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
   }
 }
 
+function pruneVcrLocal() {
+  console.log('🧹 Pruning local VCR environment...');
+  
+  try {
+    // Stop development environment first
+    console.log('Stopping development environment...');
+    try {
+      const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+      if (existsSync(composePath)) {
+        execSync(`docker compose -f ${composePath} down`, { stdio: 'ignore' });
+        console.log('✅ Development environment stopped');
+      } else {
+        console.log('ℹ️  No development environment to stop');
+      }
+    } catch (err) {
+      console.log('ℹ️  Could not stop development environment');
+    }
+    
+    // Wipe only the current project's cache directory
+    console.log('Wiping local cache directory...');
+    const localCacheDir = getComposeCacheDirectory();
+    if (existsSync(localCacheDir)) {
+      try {
+        execSync(`rm -rf "${localCacheDir}"`, { stdio: 'ignore' });
+        console.log('✅ Local cache directory wiped');
+      } catch (err) {
+        console.error('⚠️  Could not wipe local cache directory:', err);
+      }
+    } else {
+      console.log('ℹ️  Local cache directory does not exist');
+    }
+    
+    console.log('✅ Local VCR environment pruned successfully');
+    
+  } catch (err) {
+    console.error('Error pruning local VCR environment:', err);
+    process.exit(1);
+  }
+}
+
 function pruneVcr() {
   console.log('🧹 Pruning VCR environment...');
   
@@ -1106,7 +1150,7 @@ function main() {
           }
         } else if (arg === '--force-rebuild') {
           runForceRebuild = true;
-        } else if (arg === '--force-restart') {
+        } else if (arg === '--restart') {
           runForceRestart = true;
         }
       }
@@ -1160,7 +1204,21 @@ function main() {
       break;
       
     case 'prune':
-      pruneVcr();
+      let pruneLocal = false;
+      
+      // Parse prune arguments
+      for (let i = 1; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--local') {
+          pruneLocal = true;
+        }
+      }
+      
+      if (pruneLocal) {
+        pruneVcrLocal();
+      } else {
+        pruneVcr();
+      }
       break;
       
     default:
