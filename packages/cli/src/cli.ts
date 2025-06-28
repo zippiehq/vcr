@@ -352,7 +352,7 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
         image: imageReference,
         container_name: 'vcr-isolated-service',
         networks: ['internal_net'],
-        volumes: ['vcr_shared_data:/media'],
+        volumes: ['vcr_shared_data:/media/vcr'],
         healthcheck: {
           test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
           interval: '30s',
@@ -373,9 +373,9 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
       internet_service: {
         image: 'alpine',
         container_name: 'vcr-guest-agent',
-        command: 'sleep infinity',
+        command: 'sh -c "mkdir -p /media/vcr/transient && sleep infinity"',
         networks: ['internal_net', 'external_net'],
-        volumes: ['vcr_shared_data:/media']
+        volumes: ['vcr_shared_data:/media/vcr']
       }
     },
     networks: {
@@ -482,7 +482,7 @@ Prerequisites:
 `);
 }
 
-function checkRiscv64Support() {  
+function checkRiscv64Support() {
   try {
     // Try to run hello-world RISC-V 64-bit image
     execSync('docker run --rm --platform linux/riscv64 hello-world:latest', { stdio: 'pipe' });
@@ -582,22 +582,22 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         unlinkSync(vcTarPath);
       }
       
-      const command = [
-        'docker', 'run', '--rm',
-        '--network', 'host',
-        '-v', `${currentDir}:/work`,
+    const command = [
+      'docker', 'run', '--rm',
+      '--network', 'host',
+      '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
         '-v', `${join(homedir(), '.cache', 'vcr', 'linuxkit-cache')}:/root/.linuxkit/cache`,
-        '-v', '/var/run/docker.sock:/var/run/docker.sock',
+      '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
-        imageName,
+      imageName,
         'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', 'vc.yml'
       ];
-      
+    
       console.log(`Executing: ${command.join(' ')}`);
       execSync(command.join(' '), { stdio: 'inherit', cwd: currentDir });
-      
-      console.log('✅ LinuxKit image built successfully');
+    
+    console.log('✅ LinuxKit image built successfully');
       
       // Print SHA256 of vc.tar before it gets consumed
       try {
