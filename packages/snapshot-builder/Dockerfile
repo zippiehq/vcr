@@ -12,7 +12,7 @@ RUN apt-get update && \
         squashfs-tools \
         cryptsetup \
         wget \
-        qemu-system-misc \
+        qemu-system-misc ipxe-qemu \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 

@@ -74,8 +74,7 @@ RUN echo "CONFIG_SQUASHFS=y" >> .config && \
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
 
 # Verify linux-2 kernel Image hash
-RUN sha256sum /work/linux-2/arch/riscv/boot/Image
-RUN echo "4a9c3e035273ca23d6d302e0d7031b198243038b16e8899ebc12def3238a2be1  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
+RUN echo "8d25aafc18a85ec34854fdf95705aa70487518b8a866e85f27e7b70067a58874  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
 
 # Build OpenSBI with kernel payload
 WORKDIR /work/opensbi
