@@ -52,9 +52,29 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 
 RUN echo "CONFIG_RISCV_SBI_V01=y" >> .config
 
+# Add SquashFS configuration options
+RUN echo "CONFIG_SQUASHFS=y" >> .config && \
+    echo "CONFIG_SQUASHFS_FILE_CACHE=y" >> .config && \
+    echo "# CONFIG_SQUASHFS_FILE_DIRECT is not set" >> .config && \
+    echo "CONFIG_SQUASHFS_DECOMP_SINGLE=y" >> .config && \
+    echo "# CONFIG_SQUASHFS_CHOICE_DECOMP_BY_MOUNT is not set" >> .config && \
+    echo "CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE=y" >> .config && \
+    echo "# CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI is not set" >> .config && \
+    echo "# CONFIG_SQUASHFS_COMPILE_DECOMP_MULTI_PERCPU is not set" >> .config && \
+    echo "CONFIG_SQUASHFS_XATTR=y" >> .config && \
+    echo "CONFIG_SQUASHFS_ZLIB=y" >> .config && \
+    echo "# CONFIG_SQUASHFS_LZ4 is not set" >> .config && \
+    echo "# CONFIG_SQUASHFS_LZO is not set" >> .config && \
+    echo "CONFIG_SQUASHFS_XZ=y" >> .config && \
+    echo "CONFIG_SQUASHFS_ZSTD=y" >> .config && \
+    echo "CONFIG_SQUASHFS_4K_DEVBLK_SIZE=y" >> .config && \
+    echo "# CONFIG_SQUASHFS_EMBEDDED is not set" >> .config && \
+    echo "CONFIG_SQUASHFS_FRAGMENT_CACHE_SIZE=3" >> .config
+
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
 
 # Verify linux-2 kernel Image hash
+RUN sha256sum /work/linux-2/arch/riscv/boot/Image
 RUN echo "4a9c3e035273ca23d6d302e0d7031b198243038b16e8899ebc12def3238a2be1  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
 
 # Build OpenSBI with kernel payload
