@@ -4,6 +4,7 @@ import { cwd } from 'process';
 import { join } from 'path';
 import { writeFileSync, existsSync, unlinkSync, mkdirSync, readFileSync } from 'fs';
 import { homedir } from 'os';
+import { createHash } from 'crypto';
 
 function checkDockerAvailable() {
   try {
@@ -319,6 +320,23 @@ function buildDevContainer() {
   }
 }
 
+function getPathHash(): string {
+  const currentPath = cwd();
+  return createHash('sha256').update(currentPath).digest('hex').substring(0, 16);
+}
+
+function getComposeCacheDirectory(): string {
+  const pathHash = getPathHash();
+  const composeCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
+  
+  // Create compose cache directory if it doesn't exist
+  if (!existsSync(composeCacheDir)) {
+    mkdirSync(composeCacheDir, { recursive: true });
+  }
+  
+  return composeCacheDir;
+}
+
 function generateDockerCompose(imageTag: string, imageDigest?: string) {
   // Use tag + SHA256 format if digest is available, otherwise just the tag
   const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
@@ -394,7 +412,7 @@ function generateDockerCompose(imageTag: string, imageDigest?: string) {
     }
   };
   
-  const composePath = join(cwd(), 'docker-compose.dev.json');
+  const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
   writeFileSync(composePath, JSON.stringify(composeConfig, null, 2));
   return composePath;
 }
@@ -433,8 +451,9 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     console.log('\nDevelopment environment is ready!');
     console.log('- Function endpoint: http://localhost:8080/function');
     console.log('- Health check: http://localhost:8080/function/health');
-    console.log('- To stop: docker compose -f docker-compose.dev.json down');
-    console.log('- To view logs: docker compose -f docker-compose.dev.json logs -f');
+    console.log('- To stop: vcr down');
+    console.log('- To view logs: vcr logs');
+    console.log('- To follow logs: vcr logs -f');
     
   } catch (err) {
     console.error('Error starting development environment:', err);
@@ -450,6 +469,7 @@ Usage:
   vcr build -t <name:tag> [options]  Build and push container images
   vcr up -t <name:tag> [options]    Build and run development environment with isolated networking
   vcr down                           Stop development environment
+  vcr logs [-f|--follow]             View development environment logs
   vcr prune                          Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
@@ -474,7 +494,14 @@ Examples:
   vcr up -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
   vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
   vcr down                                             # Stop development environment
+  vcr logs                                             # View logs
+  vcr logs -f                                          # Follow logs in real-time
   vcr prune                                            # Clean up VCR environment
+
+Notes:
+  - Docker Compose files are stored in ~/.cache/vcr/<path-hash>/ for each project directory
+  - Use 'vcr down' to stop the environment (no need to specify compose file path)
+  - Use 'vcr logs' to view logs (no need to specify compose file path)
 
 Prerequisites:
   - Docker and buildx installed
@@ -854,7 +881,7 @@ function pruneVcr() {
     // Stop development environment first
     console.log('Stopping development environment...');
     try {
-      const composePath = join(cwd(), 'docker-compose.dev.json');
+      const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
       if (existsSync(composePath)) {
         execSync(`docker compose -f ${composePath} down`, { stdio: 'ignore' });
         console.log('✅ Development environment stopped');
@@ -1045,15 +1072,33 @@ function main() {
     case 'down':
       console.log('Stopping development environment...');
       try {
-        const composePath = join(cwd(), 'docker-compose.dev.json');
+        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
         if (existsSync(composePath)) {
           execSync(`docker compose -f ${composePath} down`, { stdio: 'inherit' });
           console.log('✅ Development environment stopped');
         } else {
-          console.log('ℹ️  No docker-compose.dev.json found');
+          console.log('ℹ️  No docker-compose.dev.json found for current directory');
         }
       } catch (err) {
         console.error('Error stopping development environment:', err);
+        process.exit(1);
+      }
+      break;
+      
+    case 'logs':
+      try {
+        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+        if (existsSync(composePath)) {
+          // Check if -f flag is provided for follow mode
+          const followMode = args.includes('-f') || args.includes('--follow');
+          const followFlag = followMode ? ' -f' : '';
+          execSync(`docker compose -f ${composePath} logs${followFlag}`, { stdio: 'inherit' });
+        } else {
+          console.log('ℹ️  No docker-compose.dev.json found for current directory');
+          console.log('Run "vcr up" first to start the development environment');
+        }
+      } catch (err) {
+        console.error('Error viewing logs:', err);
         process.exit(1);
       }
       break;
