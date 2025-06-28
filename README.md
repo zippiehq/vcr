@@ -12,6 +12,14 @@ VCR is a CLI tool for building and running **verifiable, deterministic container
 
 ## 🎯 **Core Commands**
 
+### **Create & Setup**
+```bash
+vcr create myapp --template python    # Create new Python project
+vcr create webapp --template node     # Create new Node.js project
+vcr create api --template go          # Create new Go project
+vcr create service --template rust    # Create new Rust project
+```
+
 ### **Build & Run**
 ```bash
 vcr build                    # Build verifiable container with auto-generated tag
@@ -57,7 +65,7 @@ vcr prune --local           # Clean only current project
 - **Smart caching**: Compose files stored in `~/.cache/vcr/<path-hash>/`
 - **Project isolation**: Unique containers per project directory
 - **Smart restarts**: Only recreate containers when images change
-- **Port detection**: Warns about port conflicts
+- **Port conflict detection**: Error if port 8080 is already in use
 
 ## 📁 **File Operations**
 - Container paths must start with `/app/`
@@ -73,11 +81,13 @@ vcr build --profile prod    # Use production profile with attestation
 ```
 
 ## 💡 **Pro Tips**
+- Use `vcr create` to quickly start new projects from templates
 - Use `dev` profile for fast development loops
 - Use `prod` profile for verifiable, attested builds
 - RISC-V builds create deterministic LinuxKit images
 - Cartesi machine integration provides VM-level verification
 - All artifacts include cryptographic hashes for verification
+- Port 8080 conflicts will error out with helpful resolution suggestions
 
 ---
 
