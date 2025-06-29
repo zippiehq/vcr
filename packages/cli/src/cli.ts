@@ -241,7 +241,8 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
     '-t', fullImageName,
     '--push',
     '--provenance=false',
-    '--sbom=false'
+    '--sbom=false',
+    '--add-host', 'host.docker.internal:host-gateway'
   ];
   
   // Add cache directory if specified
