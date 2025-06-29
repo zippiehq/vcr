@@ -926,6 +926,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
       
     const command = [
       'docker', 'run', '--rm',
+      '--user', `${uid}:${gid}`,
       '--network', 'host',
       '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
@@ -957,6 +958,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
       console.log('Creating squashfs from vc.tar...');
       const snapshotCommand = [
         'docker', 'run', '--rm',
+        '--user', `${uid}:${gid}`,
         '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
         '-w', '/cache',
