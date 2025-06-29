@@ -37,6 +37,15 @@ function checkVcrBuilder() {
   } catch (err) {
     console.log('⚠️  vcr-builder not found. Creating it...');
     try {
+      // Ensure vcr-network exists before creating builder
+      try {
+        execSync('docker network create vcr-network', { stdio: 'ignore' });
+        console.log('✅ vcr-network created');
+      } catch (networkErr) {
+        // Network might already exist, that's fine
+        console.log('ℹ️  vcr-network already exists');
+      }
+      
       // Create BuildKit configuration
       const configPath = createBuildKitConfig();
       
