@@ -924,6 +924,14 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         unlinkSync(vcTarPath);
       }
       
+      // Ensure .moby directory exists in cache
+      if (cacheDir) {
+        const mobyDir = join(cacheDir, '.moby');
+        if (!existsSync(mobyDir)) {
+          mkdirSync(mobyDir, { recursive: true });
+        }
+      }
+      
     const command = [
       'docker', 'run', '--rm',
       '--user', `${uid}:${gid}`,
@@ -936,6 +944,11 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
       imageName,
         'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', 'vc.yml'
       ];
+    
+    // Add .moby volume mount if cacheDir is defined
+    if (cacheDir) {
+      command.splice(-2, 0, '-v', `${cacheDir}/.moby:/.moby`);
+    }
     
       console.log(`Executing: ${command.join(' ')}`);
       execSync(command.join(' '), { stdio: 'inherit', cwd: currentDir });
