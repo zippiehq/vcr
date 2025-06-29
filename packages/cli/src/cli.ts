@@ -903,6 +903,10 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
   const currentDir = cwd();
   const imageName = process.env.LINUXKIT_IMAGE || 'ghcr.io/zippiehq/vcr-linuxkit-builder:latest';
   
+  // Get current user UID/GID for Docker commands
+  const uid = process.getuid?.() ?? 0;
+  const gid = process.getgid?.() ?? 0;
+  
   console.log(`Using LinuxKit image: ${imageName}`);
   console.log(`Working directory: ${currentDir}`);
   console.log(`Cache directory: ${cacheDir}`);
@@ -993,12 +997,13 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         console.log('Creating Cartesi machine snapshot...');
         const cartesiCommand = [
           'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
           '-v', `${currentDir}:/work`,
           '-v', `${cacheDir}:/cache`,
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot --initial-hash'
+          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
         ];
         
         console.log(`Executing: ${cartesiCommand.join(' ')}`);
@@ -1048,6 +1053,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         console.log('Creating compressed Cartesi machine snapshot...');
         const compressCommand = [
           'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
           '-v', `${currentDir}:/work`,
           '-v', `${cacheDir}:/cache`,
           '-w', '/cache',
@@ -1101,6 +1107,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         
         const verityCommand = [
           'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
           '-v', `${currentDir}:/work`,
           '-v', `${cacheDir}:/cache`,
           '-w', '/cache',
