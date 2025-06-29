@@ -337,6 +337,59 @@ function getComposeCacheDirectory(): string {
   return composeCacheDir;
 }
 
+function detectProfileAndSshKey(): { profile: 'dev' | 'test' | 'prod', sshKeyPath?: string } {
+  const pathHash = getPathHash();
+  const containerName = `${pathHash}-vcr-isolated-service`;
+  
+  try {
+    const containerInfo = execSync(`docker inspect ${containerName} --format '{{.Config.Image}}'`, { encoding: 'utf8' }).trim();
+    
+    if (containerInfo === 'ghcr.io/zippiehq/vcr-snapshot-builder') {
+      // This is a test or prod profile - find SSH key and determine which one
+      const baseCacheDir = join(homedir(), '.cache', 'vcr');
+      let sshKeyPath: string | undefined;
+      
+      if (existsSync(baseCacheDir)) {
+        // First check base cache directory
+        const baseKeyPath = join(baseCacheDir, 'ssh.debug-key');
+        if (existsSync(baseKeyPath)) {
+          sshKeyPath = baseKeyPath;
+        } else {
+          // Check digest-specific directories
+          const cacheEntries = execSync(`ls -1 "${baseCacheDir}"`, { encoding: 'utf8' }).trim().split('\n');
+          for (const entry of cacheEntries) {
+            if (entry && entry !== 'linuxkit-cache') { // Skip non-digest directories
+              const digestKeyPath = join(baseCacheDir, entry, 'ssh.debug-key');
+              if (existsSync(digestKeyPath)) {
+                sshKeyPath = digestKeyPath;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      // Determine if it's test or prod by checking the command
+      try {
+        const containerCmd = execSync(`docker inspect ${containerName} --format '{{join .Config.Cmd " "}}'`, { encoding: 'utf8' }).trim();
+        if (containerCmd.includes('cartesi-machine')) {
+          return { profile: 'prod', sshKeyPath };
+        } else {
+          return { profile: 'test', sshKeyPath };
+        }
+      } catch (cmdErr) {
+        // Fallback to test if we can't determine
+        return { profile: 'test', sshKeyPath };
+      }
+    } else {
+      return { profile: 'dev' };
+    }
+  } catch (inspectErr) {
+    // Fallback to dev profile if we can't inspect the container
+    return { profile: 'dev' };
+  }
+}
+
 function generateDockerCompose(imageTag: string, profile: string, imageDigest?: string) {
   // Use tag + SHA256 format if digest is available, otherwise just the tag
   const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
@@ -1509,8 +1562,33 @@ function main() {
           }
           
           const command = execArgs.join(' ');
-          const result = execSync(`docker compose -f ${composePath} exec isolated_service ${command}`, { stdio: 'inherit' });
-          return result;
+          const { profile, sshKeyPath } = detectProfileAndSshKey();
+          const pathHash = getPathHash();
+          const containerName = `${pathHash}-vcr-isolated-service`;
+          
+          if (profile === 'test' || profile === 'prod') {
+            // Use SSH for test/prod profiles
+            if (!sshKeyPath) {
+              console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+              process.exit(1);
+            }
+            
+            console.log(`Detected ${profile} profile - executing command via SSH...`);
+            try {
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "${command}"`, { stdio: 'inherit' });
+            } catch (sshErr) {
+              // SSH command execution errors should be treated as command errors
+              if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                process.exit(sshErr.status);
+              }
+              process.exit(1);
+            }
+          } else {
+            // Use Docker exec for dev profile
+            console.log('Detected dev profile - executing command in container...');
+            const result = execSync(`docker compose -f ${composePath} exec isolated_service ${command}`, { stdio: 'inherit' });
+            return result;
+          }
         } else {
           console.log('ℹ️  No docker-compose.dev.json found for current directory');
           console.log('Run "vcr up" first to start the development environment');
@@ -1531,67 +1609,35 @@ function main() {
         const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
         if (existsSync(composePath)) {
           // Detect the profile by checking the container's image
+          const { profile, sshKeyPath } = detectProfileAndSshKey();
           const pathHash = getPathHash();
           const containerName = `${pathHash}-vcr-isolated-service`;
           
-          try {
-            const containerInfo = execSync(`docker inspect ${containerName} --format '{{.Config.Image}}'`, { encoding: 'utf8' }).trim();
+          if (profile === 'test' || profile === 'prod') {
+            // This is a test or prod profile - exec into container then SSH
+            console.log('Detected test/prod profile - connecting to RISC-V VM...');
+            console.log('Type "exit" to return to your host shell');
             
-            if (containerInfo === 'ghcr.io/zippiehq/vcr-snapshot-builder') {
-              // This is a test or prod profile - exec into container then SSH
-              console.log('Detected test/prod profile - connecting to RISC-V VM...');
-              console.log('Type "exit" to return to your host shell');
-              
-              // Find the SSH key in any cache directory
-              const baseCacheDir = join(homedir(), '.cache', 'vcr');
-              let sshKeyPath: string | undefined;
-              
-              if (existsSync(baseCacheDir)) {
-                // First check base cache directory
-                const baseKeyPath = join(baseCacheDir, 'ssh.debug-key');
-                if (existsSync(baseKeyPath)) {
-                  sshKeyPath = baseKeyPath;
-                } else {
-                  // Check digest-specific directories
-                  const cacheEntries = execSync(`ls -1 "${baseCacheDir}"`, { encoding: 'utf8' }).trim().split('\n');
-                  for (const entry of cacheEntries) {
-                    if (entry && entry !== 'linuxkit-cache') { // Skip non-digest directories
-                      const digestKeyPath = join(baseCacheDir, entry, 'ssh.debug-key');
-                      if (existsSync(digestKeyPath)) {
-                        sshKeyPath = digestKeyPath;
-                        break;
-                      }
-                    }
-                  }
-                }
-              }
-              
-              if (!sshKeyPath || !existsSync(sshKeyPath)) {
-                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-                process.exit(1);
-              }
-              
-              // First exec into the container, then SSH from there
-              try {
-                execSync(`docker exec -it ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost`, { stdio: 'inherit' });
-              } catch (sshErr) {
-                // SSH connection closure is normal, don't treat as error
-                if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
-                  // Exit with the same status code but don't print error
-                  process.exit(sshErr.status);
-                }
-                // For other errors, still exit gracefully
-                process.exit(0);
-              }
-            } else {
-              // This is a dev profile - use Docker exec
-              console.log('Detected dev profile - opening shell in container...');
-              console.log('Type "exit" to return to your host shell');
-              execSync(`docker compose -f ${composePath} exec isolated_service /bin/sh`, { stdio: 'inherit' });
+            if (!sshKeyPath) {
+              console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+              process.exit(1);
             }
-          } catch (inspectErr) {
-            // Fallback to dev profile behavior if we can't inspect the container
-            console.log('Opening shell in isolated_service container...');
+            
+            // First exec into the container, then SSH from there
+            try {
+              execSync(`docker exec -it ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost`, { stdio: 'inherit' });
+            } catch (sshErr) {
+              // SSH connection closure is normal, don't treat as error
+              if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                // Exit with the same status code but don't print error
+                process.exit(sshErr.status);
+              }
+              // For other errors, still exit gracefully
+              process.exit(0);
+            }
+          } else {
+            // This is a dev profile - use Docker exec
+            console.log('Detected dev profile - opening shell in container...');
             console.log('Type "exit" to return to your host shell');
             execSync(`docker compose -f ${composePath} exec isolated_service /bin/sh`, { stdio: 'inherit' });
           }
@@ -1621,6 +1667,7 @@ function main() {
           }
           
           const [source, destination] = cpArgs;
+          const { profile, sshKeyPath } = detectProfileAndSshKey();
           const pathHash = getPathHash();
           const containerName = `${pathHash}-vcr-isolated-service`;
           
@@ -1636,14 +1683,44 @@ function main() {
             process.exit(1);
           }
           
-          if (isHostToContainer) {
-            // Copy from host to container
-            console.log(`Copying ${source} to container:${destination}`);
-            execSync(`docker cp "${source}" ${containerName}:${destination}`, { stdio: 'inherit' });
+          if (profile === 'test' || profile === 'prod') {
+            // Use SSH for test/prod profiles
+            if (!sshKeyPath) {
+              console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+              process.exit(1);
+            }
+            
+            console.log(`Detected ${profile} profile - copying files via SSH...`);
+            
+            if (isHostToContainer) {
+              // Copy from host to container via SSH
+              console.log(`Copying ${source} to container:${destination}`);
+              // First copy to the container's /work directory, then move to destination
+              const tempPath = `/work/temp_${Date.now()}`;
+              execSync(`docker cp "${source}" ${containerName}:${tempPath}`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cp ${tempPath} ${destination}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
+            } else {
+              // Copy from container to host via SSH
+              console.log(`Copying container:${source} to ${destination}`);
+              // First copy from VM to container's /work directory, then to host
+              const tempPath = `/work/temp_${Date.now()}`;
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cp ${source} ${tempPath}"`, { stdio: 'inherit' });
+              execSync(`docker cp ${containerName}:${tempPath} "${destination}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
+            }
           } else {
-            // Copy from container to host
-            console.log(`Copying container:${source} to ${destination}`);
-            execSync(`docker cp ${containerName}:${source} "${destination}"`, { stdio: 'inherit' });
+            // Use Docker cp for dev profile
+            console.log('Detected dev profile - copying files in container...');
+            if (isHostToContainer) {
+              // Copy from host to container
+              console.log(`Copying ${source} to container:${destination}`);
+              execSync(`docker cp "${source}" ${containerName}:${destination}`, { stdio: 'inherit' });
+            } else {
+              // Copy from container to host
+              console.log(`Copying container:${source} to ${destination}`);
+              execSync(`docker cp ${containerName}:${source} "${destination}"`, { stdio: 'inherit' });
+            }
           }
         } else {
           console.log('ℹ️  No docker-compose.dev.json found for current directory');
@@ -1676,15 +1753,33 @@ function main() {
           }
           
           const filePath = catArgs[0];
+                  
+          const { profile, sshKeyPath } = detectProfileAndSshKey();
+          const pathHash = getPathHash();
+          const containerName = `${pathHash}-vcr-isolated-service`;
           
-          // Ensure the path starts with /app/ for clarity
-          if (!filePath.startsWith('/app/')) {
-            console.error('Error: Container file paths should start with /app/');
-            console.log('Example: vcr cat /app/config.json');
-            process.exit(1);
+          if (profile === 'test' || profile === 'prod') {
+            // Use SSH for test/prod profiles
+            if (!sshKeyPath) {
+              console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+              process.exit(1);
+            }
+            
+            console.log(`Detected ${profile} profile - viewing file via SSH...`);
+            try {
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cat ${filePath}"`, { stdio: 'inherit' });
+            } catch (sshErr) {
+              // SSH command execution errors should be treated as command errors
+              if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                process.exit(sshErr.status);
+              }
+              process.exit(1);
+            }
+          } else {
+            // Use Docker exec for dev profile
+            console.log('Detected dev profile - viewing file in container...');
+            execSync(`docker compose -f ${composePath} exec isolated_service cat ${filePath}`, { stdio: 'inherit' });
           }
-          
-          execSync(`docker compose -f ${composePath} exec isolated_service cat ${filePath}`, { stdio: 'inherit' });
         } else {
           console.log('ℹ️  No docker-compose.dev.json found for current directory');
           console.log('Run "vcr up" first to start the development environment');
