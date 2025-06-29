@@ -938,17 +938,14 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
       '--network', 'host',
       '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
-        '-v', `${join(homedir(), '.cache', 'vcr', 'linuxkit-cache')}:/root/.linuxkit/cache`,
+        '-v', `${join(homedir(), '.cache', 'vcr', 'linuxkit-cache')}:/.linuxkit/cache`,
+        ...(cacheDir ? ['-v', `${cacheDir}/.moby:/.moby`] : []),
       '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
       imageName,
         'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', 'vc.yml'
       ];
     
-    // Add .moby volume mount if cacheDir is defined
-    if (cacheDir) {
-      command.splice(-2, 0, '-v', `${cacheDir}/.moby:/.moby`);
-    }
     
       console.log(`Executing: ${command.join(' ')}`);
       execSync(command.join(' '), { stdio: 'inherit', cwd: currentDir });
