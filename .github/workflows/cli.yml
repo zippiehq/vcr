@@ -13,6 +13,7 @@ on:
       - '*'
     paths:
       - 'packages/cli/**'
+  workflow_dispatch:
 
 jobs:
   build:
