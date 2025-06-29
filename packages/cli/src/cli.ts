@@ -215,6 +215,12 @@ function verifyRegistryConnectivity() {
   }
 }
 
+function getRegistryUrl(context: 'host' | 'docker' = 'docker'): string {
+  // For host access (from CLI script), use localhost:5001
+  // For Docker network access (from containers), use vcr-registry:5000
+  return context === 'host' ? 'localhost:5001' : 'vcr-registry:5000';
+}
+
 function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
@@ -263,12 +269,12 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
       env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
     });
     console.log(`\n✅ Build completed successfully!`);
-    console.log(`Image pushed to: vcr-registry:5000/${imageTag}`);
+    console.log(`Image pushed to: ${getRegistryUrl('docker')}/${imageTag}`);
     
     // Capture the image digest after successful build
     let imageDigest: string | undefined;
     try {
-      const localImageName = `vcr-registry:5000/${imageTag}`;
+      const localImageName = `${getRegistryUrl('host')}/${imageTag}`;
       const digestOutput = execSync(`docker buildx imagetools inspect ${localImageName} --format '{{json .}}'`, { encoding: 'utf8' });
       const digestData = JSON.parse(digestOutput);
       imageDigest = digestData.manifest.digest;
@@ -392,7 +398,7 @@ function detectProfileAndSshKey(): { profile: 'dev' | 'test' | 'prod', sshKeyPat
 
 function generateDockerCompose(imageTag: string, profile: string, imageDigest?: string) {
   // Use tag + SHA256 format if digest is available, otherwise just the tag
-  const imageReference = imageDigest ? `vcr-registry:5000/${imageTag}@${imageDigest}` : `vcr-registry:5000/${imageTag}`;
+  const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
   
   const pathHash = getPathHash();
   const cacheDir = getCacheDirectory(imageDigest);
@@ -605,7 +611,7 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
         const currentImage = composeConfig.services?.isolated_service?.image;
         
         if (currentImage) {
-          const expectedImage = imageDigest ? `vcr-registry:5000/${imageTag}@${imageDigest}` : `vcr-registry:5000/${imageTag}`;
+          const expectedImage = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
           if (currentImage !== expectedImage) {
             console.log(`🔄 Image tag changed from ${currentImage} to ${expectedImage}`);
             needsUpdate = true;
@@ -864,7 +870,7 @@ services:
     binds.add:
       - /root/.ssh:/root/.ssh
   - name: app
-    image: vcr-registry:5000/${imageReference}
+    image: localhost:5001/${imageReference}
 ${netConfig}
 files:
   - path: root/.ssh/authorized_keys
