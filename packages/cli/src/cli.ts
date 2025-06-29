@@ -42,8 +42,8 @@ function checkVcrBuilder() {
       
       // Create builder with BuildKit configuration
       const createCommand = configPath 
-        ? `docker buildx create --name vcr-builder --use --driver docker-container --config=${configPath}`
-        : 'docker buildx create --name vcr-builder --use --driver docker-container';
+        ? `docker buildx create --name vcr-builder --use --driver docker-container --driver-opt network=vcr-network --config=${configPath}`
+        : 'docker buildx create --name vcr-builder --use --driver docker-container --driver-opt network=vcr-network';
       
       execSync(createCommand, { stdio: 'inherit' });
       console.log('✅ vcr-builder created successfully');
@@ -230,20 +230,7 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
   const platforms = resolvePlatforms(profile);
   
   // Construct full image name with local registry
-  const fullImageName = `host.docker.internal:5001/${imageTag}`;
-  
-  // Get host IP for docker-container driver
-  let hostIP = '172.17.0.1'; // Default Docker bridge IP
-  try {
-    // Try to get the actual host IP from Docker
-    const dockerInfo = execSync('docker network inspect bridge --format "{{range .IPAM.Config}}{{.Gateway}}{{end}}"', { encoding: 'utf8' }).trim();
-    if (dockerInfo && dockerInfo !== '<no value>') {
-      hostIP = dockerInfo;
-    }
-  } catch (err) {
-    // Fall back to default IP
-    console.log('Using default host IP for docker-container driver');
-  }
+  const fullImageName = `vcr-registry:5000/${imageTag}`;
   
   // Build command
   const buildArgs = [
@@ -254,8 +241,7 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
     '-t', fullImageName,
     '--push',
     '--provenance=false',
-    '--sbom=false',
-    '--add-host', `host.docker.internal:${hostIP}`
+    '--sbom=false'
   ];
   
   // Add cache directory if specified
@@ -277,12 +263,12 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
       env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
     });
     console.log(`\n✅ Build completed successfully!`);
-    console.log(`Image pushed to: localhost:5001/${imageTag}`);
+    console.log(`Image pushed to: vcr-registry:5000/${imageTag}`);
     
     // Capture the image digest after successful build
     let imageDigest: string | undefined;
     try {
-      const localImageName = `localhost:5001/${imageTag}`;
+      const localImageName = `vcr-registry:5000/${imageTag}`;
       const digestOutput = execSync(`docker buildx imagetools inspect ${localImageName} --format '{{json .}}'`, { encoding: 'utf8' });
       const digestData = JSON.parse(digestOutput);
       imageDigest = digestData.manifest.digest;
@@ -406,7 +392,7 @@ function detectProfileAndSshKey(): { profile: 'dev' | 'test' | 'prod', sshKeyPat
 
 function generateDockerCompose(imageTag: string, profile: string, imageDigest?: string) {
   // Use tag + SHA256 format if digest is available, otherwise just the tag
-  const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
+  const imageReference = imageDigest ? `vcr-registry:5000/${imageTag}@${imageDigest}` : `vcr-registry:5000/${imageTag}`;
   
   const pathHash = getPathHash();
   const cacheDir = getCacheDirectory(imageDigest);
@@ -619,7 +605,7 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
         const currentImage = composeConfig.services?.isolated_service?.image;
         
         if (currentImage) {
-          const expectedImage = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
+          const expectedImage = imageDigest ? `vcr-registry:5000/${imageTag}@${imageDigest}` : `vcr-registry:5000/${imageTag}`;
           if (currentImage !== expectedImage) {
             console.log(`🔄 Image tag changed from ${currentImage} to ${expectedImage}`);
             needsUpdate = true;
@@ -790,14 +776,6 @@ function createBuildKitConfig() {
     const buildkitConfig = `[registry."vcr-registry:5000"]
 http = true
 insecure = true
-
-[registry."host.docker.internal:5001"]
-http = true
-insecure = true
-
-[registry."localhost:5001"]
-http = true
-insecure = true
 `;
     
     const configPath = '/tmp/buildkitd.toml';
@@ -886,7 +864,7 @@ services:
     binds.add:
       - /root/.ssh:/root/.ssh
   - name: app
-    image: localhost:5001/${imageReference}
+    image: vcr-registry:5000/${imageReference}
 ${netConfig}
 files:
   - path: root/.ssh/authorized_keys
