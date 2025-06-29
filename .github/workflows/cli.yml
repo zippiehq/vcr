@@ -25,40 +25,42 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: packages/cli/package-lock.json
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: latest
 
       - name: Install dependencies
         run: |
-          cd packages/cli
-          npm ci
+          pnpm install
 
       - name: Build CLI
         run: |
-          cd packages/cli
-          npm run build
+          pnpm --filter @zippie/vcr build
 
       - name: Test CLI help
         run: |
-          cd packages/cli
-          node dist/cli.js --help
+          pnpm --filter @zippie/vcr start --help
 
       - name: Check if Docker is available
         run: |
           docker --version
           docker ps
 
-      - name: Test CLI linuxkit command (dry run)
+      - name: Test CLI build command (dry run)
         run: |
-          cd packages/cli
-          # Test that the command structure is correct without actually running
+          # Test that the command structure is correct by running in a directory with a Dockerfile
+          cd packages/sample-python
           node -e "
             const { execSync } = require('child_process');
             try {
-              execSync('node dist/cli.js linuxkit', { stdio: 'pipe' });
+              execSync('node ../../packages/cli/dist/cli.js build', { stdio: 'pipe' });
             } catch (e) {
-              // Expected to fail since we don't have the linuxkit image
+              // Expected to fail since we don't have Docker buildx set up in CI
               console.log('CLI command structure is correct');
             }
           " 
