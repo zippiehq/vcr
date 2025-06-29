@@ -930,19 +930,22 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         if (!existsSync(mobyDir)) {
           mkdirSync(mobyDir, { recursive: true });
         }
-        const linuxCacheDir = join(cacheDir, '.linuxkit', 'cache');
-        if (!existsSync(linuxCacheDir)) {
-          mkdirSync(linuxCacheDir, { recursive: true });
-        }
+      }
+      
+      // Ensure LinuxKit cache directory exists
+      const linuxkitCacheDir = join(homedir(), '.cache', 'vcr', 'linuxkit-cache');
+      if (!existsSync(linuxkitCacheDir)) {
+        mkdirSync(linuxkitCacheDir, { recursive: true });
       }
       
     const command = [
       'docker', 'run', '--rm',
       '--user', `${uid}:${gid}`,
       '--network', 'host',
+      '-e', 'HOME=/cache',
       '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
-        '-v', `${join(homedir(), '.cache', 'vcr', 'linuxkit-cache')}:/.linuxkit/cache`,
+        '-v', `${linuxkitCacheDir}:/home/user/.linuxkit/cache`,
         ...(cacheDir ? ['-v', `${cacheDir}/.moby:/.moby`] : []),
       '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
