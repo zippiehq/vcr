@@ -1002,12 +1002,10 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         ];
         
         console.log(`Executing: ${cartesiCommand.join(' ')}`);
-        const cartesiResult = spawnSync(cartesiCommand[0], cartesiCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+        const cartesiResult = spawnSync(cartesiCommand[0], cartesiCommand.slice(1), { stdio: 'inherit', cwd: currentDir });
         
         if (cartesiResult.status !== 0) {
-          console.error('Cartesi machine command failed with output:');
-          if (cartesiResult.stdout) console.error('stdout:', cartesiResult.stdout.toString());
-          if (cartesiResult.stderr) console.error('stderr:', cartesiResult.stderr.toString());
+          console.error('Cartesi machine command failed with status:', cartesiResult.status);
           throw new Error(`Cartesi machine command failed with status ${cartesiResult.status}`);
         }
         
@@ -1021,10 +1019,13 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
             const hash = hashBuffer.toString('hex');
             console.log(`🔐 Cartesi machine hash: ${hash}`);
           } else {
-            console.log('⚠️  Hash file not found at vc-cm-snapshot/hash');
+            console.error('❌ Error: Cartesi machine hash file not found at vc-cm-snapshot/hash');
+            console.error('This indicates the Cartesi machine creation failed or the hash file was not generated.');
+            process.exit(1);
           }
         } catch (hashErr) {
-          console.log('⚠️  Could not read Cartesi machine hash:', hashErr);
+          console.error('❌ Error: Could not read Cartesi machine hash:', hashErr);
+          process.exit(1);
         }
       }
       
