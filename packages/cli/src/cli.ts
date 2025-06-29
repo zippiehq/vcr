@@ -1661,7 +1661,7 @@ function main() {
             console.error('Error: vcr cp requires exactly 2 arguments: <source> <destination>');
             console.log('Examples:');
             console.log('  vcr cp local-file.txt /app/remote-file.txt');
-            console.log('  vcr cp /app/logs.txt ./local-logs.txt');
+            console.log('  vcr cp container:/app/logs.txt ./local-logs.txt');
             console.log('  vcr cp ./config/ /app/config/');
             process.exit(1);
           }
@@ -1672,28 +1672,43 @@ function main() {
           const containerName = `${pathHash}-vcr-isolated-service`;
           
           // Determine if it's host->container or container->host
-          const isHostToContainer = !source.includes(':') && !source.startsWith('/app/');
-          const isContainerToHost = destination.includes(':') || destination.startsWith('./') || destination.startsWith('../') || !destination.startsWith('/');
+          const isContainerToHost = source.startsWith('container:');
+          const isHostToContainer = !isContainerToHost;
           
-          if (isHostToContainer && isContainerToHost) {
-            console.error('Error: Ambiguous copy direction. Please specify container paths with /app/ prefix');
-            console.log('Examples:');
-            console.log('  vcr cp local-file.txt /app/remote-file.txt  # host -> container');
-            console.log('  vcr cp /app/logs.txt ./local-logs.txt      # container -> host');
-            process.exit(1);
-          }
-          
-          if (profile === 'test' || profile === 'prod') {
-            // Use SSH for test/prod profiles
-            if (!sshKeyPath) {
-              console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-              process.exit(1);
+          if (isContainerToHost) {
+            // Remove 'container:' prefix for the actual path
+            const containerPath = source.substring(9); // Remove 'container:' prefix
+            
+            if (profile === 'test' || profile === 'prod') {
+              // Use SSH for test/prod profiles
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
+              }
+              
+              console.log(`Detected ${profile} profile - copying files via SSH...`);
+              console.log(`Copying container:${containerPath} to ${destination}`);
+              // First copy from VM to container's /work directory, then to host
+              const tempPath = `/work/temp_${Date.now()}`;
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cp ${containerPath} ${tempPath}"`, { stdio: 'inherit' });
+              execSync(`docker cp ${containerName}:${tempPath} "${destination}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
+            } else {
+              // Use Docker cp for dev profile
+              console.log('Detected dev profile - copying files in container...');
+              console.log(`Copying container:${containerPath} to ${destination}`);
+              execSync(`docker cp ${containerName}:${containerPath} "${destination}"`, { stdio: 'inherit' });
             }
-            
-            console.log(`Detected ${profile} profile - copying files via SSH...`);
-            
-            if (isHostToContainer) {
-              // Copy from host to container via SSH
+          } else {
+            // Host to container copy
+            if (profile === 'test' || profile === 'prod') {
+              // Use SSH for test/prod profiles
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
+              }
+              
+              console.log(`Detected ${profile} profile - copying files via SSH...`);
               console.log(`Copying ${source} to container:${destination}`);
               // First copy to the container's /work directory, then move to destination
               const tempPath = `/work/temp_${Date.now()}`;
@@ -1701,25 +1716,10 @@ function main() {
               execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cp ${tempPath} ${destination}"`, { stdio: 'inherit' });
               execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
             } else {
-              // Copy from container to host via SSH
-              console.log(`Copying container:${source} to ${destination}`);
-              // First copy from VM to container's /work directory, then to host
-              const tempPath = `/work/temp_${Date.now()}`;
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cp ${source} ${tempPath}"`, { stdio: 'inherit' });
-              execSync(`docker cp ${containerName}:${tempPath} "${destination}"`, { stdio: 'inherit' });
-              execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
-            }
-          } else {
-            // Use Docker cp for dev profile
-            console.log('Detected dev profile - copying files in container...');
-            if (isHostToContainer) {
-              // Copy from host to container
+              // Use Docker cp for dev profile
+              console.log('Detected dev profile - copying files in container...');
               console.log(`Copying ${source} to container:${destination}`);
               execSync(`docker cp "${source}" ${containerName}:${destination}`, { stdio: 'inherit' });
-            } else {
-              // Copy from container to host
-              console.log(`Copying container:${source} to ${destination}`);
-              execSync(`docker cp ${containerName}:${source} "${destination}"`, { stdio: 'inherit' });
             }
           }
         } else {
