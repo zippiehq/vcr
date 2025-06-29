@@ -930,6 +930,10 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         if (!existsSync(mobyDir)) {
           mkdirSync(mobyDir, { recursive: true });
         }
+        const linuxCacheDir = join(cacheDir, '.linuxkit', 'cache');
+        if (!existsSync(linuxCacheDir)) {
+          mkdirSync(linuxCacheDir, { recursive: true });
+        }
       }
       
     const command = [
