@@ -23,17 +23,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: latest
+
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v3
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: latest
 
       - name: Install dependencies
         run: |
@@ -52,16 +55,13 @@ jobs:
           docker --version
           docker ps
 
-      - name: Test CLI build command (dry run)
+      - name: Test CLI build command
         run: |
-          # Test that the command structure is correct by running in a directory with a Dockerfile
+          # Test that the build command works for all profiles in a directory with a Dockerfile
           cd packages/sample-python
-          node -e "
-            const { execSync } = require('child_process');
-            try {
-              execSync('node ../../packages/cli/dist/cli.js build', { stdio: 'pipe' });
-            } catch (e) {
-              // Expected to fail since we don't have Docker buildx set up in CI
-              console.log('CLI command structure is correct');
-            }
-          " 
+          echo "Testing dev profile build..."
+          node ../../packages/cli/dist/cli.js build --profile dev
+          echo "Testing test profile build..."
+          node ../../packages/cli/dist/cli.js build --profile test
+          echo "Testing prod profile build..."
+          node ../../packages/cli/dist/cli.js build --profile prod 
