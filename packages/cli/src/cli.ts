@@ -232,6 +232,19 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
   // Construct full image name with local registry
   const fullImageName = `host.docker.internal:5001/${imageTag}`;
   
+  // Get host IP for docker-container driver
+  let hostIP = '172.17.0.1'; // Default Docker bridge IP
+  try {
+    // Try to get the actual host IP from Docker
+    const dockerInfo = execSync('docker network inspect bridge --format "{{range .IPAM.Config}}{{.Gateway}}{{end}}"', { encoding: 'utf8' }).trim();
+    if (dockerInfo && dockerInfo !== '<no value>') {
+      hostIP = dockerInfo;
+    }
+  } catch (err) {
+    // Fall back to default IP
+    console.log('Using default host IP for docker-container driver');
+  }
+  
   // Build command
   const buildArgs = [
     'buildx',
@@ -242,7 +255,7 @@ function buildImage(imageTag: string, profile: string, cacheDir?: string, forceR
     '--push',
     '--provenance=false',
     '--sbom=false',
-    '--add-host', 'host.docker.internal:host-gateway'
+    '--add-host', `host.docker.internal:${hostIP}`
   ];
   
   // Add cache directory if specified
