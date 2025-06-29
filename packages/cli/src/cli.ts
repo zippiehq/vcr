@@ -998,7 +998,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
+          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot --initial-hash'
         ];
         
         console.log(`Executing: ${cartesiCommand.join(' ')}`);
@@ -1021,6 +1021,18 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           } else {
             console.error('❌ Error: Cartesi machine hash file not found at vc-cm-snapshot/hash');
             console.error('This indicates the Cartesi machine creation failed or the hash file was not generated.');
+            console.error('Checking if snapshot directory exists and listing contents...');
+            try {
+              if (existsSync(cmSnapshotPath)) {
+                const contents = execSync(`ls -la "${cmSnapshotPath}"`, { encoding: 'utf8' });
+                console.error('Snapshot directory contents:');
+                console.error(contents);
+              } else {
+                console.error('Snapshot directory does not exist');
+              }
+            } catch (listErr) {
+              console.error('Could not list snapshot directory contents:', listErr);
+            }
             process.exit(1);
           }
         } catch (hashErr) {
