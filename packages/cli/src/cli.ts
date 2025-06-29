@@ -875,7 +875,7 @@ services:
     env:
      - INSECURE=true
   - name: sshd
-    image: ghcr.io/zippiehq/vcr-linuxkit-sshd:9bdd85427ef99640276d97a32a7a3cc31bb017b3
+    image: ghcr.io/zippiehq/vcr-linuxkit-sshd@sha256:448f0a6f0b30e7f6f4a28ab11268b07ed2fb81a4d4feb1092c0b16a126d33183
     binds.add:
       - /root/.ssh:/root/.ssh
   - name: app
