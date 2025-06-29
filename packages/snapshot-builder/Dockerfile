@@ -13,7 +13,7 @@ RUN apt-get update && \
         cryptsetup \
         wget \
         curl \
-        qemu-system-misc ipxe-qemu \
+        openssh-client qemu-system-misc ipxe-qemu \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
