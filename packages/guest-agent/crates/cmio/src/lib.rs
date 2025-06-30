@@ -196,7 +196,7 @@ impl CmioIoDriver {
         self.yield_control(&mut yield_data)?;
         // Copy RX buffer
         let rx_buf = self.rx_slice();
-        let rx_vec = rx_buf[..self.rx_len()].to_vec();
+        let rx_vec = rx_buf[..yield_data.data as usize].to_vec();
         Ok(rx_vec)
     }
 }
