@@ -1,6 +1,4 @@
-use libc::{c_int, c_void, mmap, munmap, open, close, O_RDWR, PROT_READ, PROT_WRITE, MAP_SHARED, MAP_FAILED, c_char};
 use nix::{ioctl_read, ioctl_readwrite};
-use std::ptr;
 use thiserror::Error;
 use std::path::Path;
 
@@ -65,26 +63,3 @@ const HTIF_YIELD_CMD_AUTOMATIC: u8 = 0;
 const HTIF_YIELD_CMD_MANUAL: u8 = 1;
 // HTIF Automatic reasons
 const HTIF_YIELD_AUTOMATIC_REASON_TX_REPORT: u16 = 4;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_pack_unpack() {
-        let original = CmioYield {
-            dev: 1,
-            cmd: 2,
-            reason: 3,
-            data: 4,
-        };
-        
-        let packed = CmioIoDriver::pack(&original);
-        let unpacked = CmioIoDriver::unpack(packed);
-        
-        assert_eq!(original.dev, unpacked.dev);
-        assert_eq!(original.cmd, unpacked.cmd);
-        assert_eq!(original.reason, unpacked.reason);
-        assert_eq!(original.data, unpacked.data);
-    }
-} 

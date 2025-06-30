@@ -1,81 +1,101 @@
-use log::{info, error};
-use tokio::io::{AsyncReadExt, ReadHalf};
-use tokio::signal;
-use tokio::io;
-use tokio_vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
-use vsock_protocol::{VirtioVsockHdr, HDR_SIZE};
+use log::{error, info, warn};
+use std::io::{self, Write};
+use std::thread;
+use std::time::Duration;
+use vsock::{VsockAddr, VsockStream, VMADDR_CID_HOST};
+use vsock_protocol::{
+    Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RW, VSOCK_TYPE_STREAM,
+};
+const GUEST_PORT: u32 = 9000;
+const RETRY_DELAY: Duration = Duration::from_secs(5);
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
-    let port = 6000;
-    info!("Starting Host Agent, listening on vsock port {}", port);
-    info!("Press Ctrl+C to shut down.");
+    info!("Starting Host Agent");
 
-    let listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))?;
-
-    tokio::select! {
-        _ = server_loop(listener) => {
-            error!("Server loop unexpectedly exited.");
-        },
-        _ = signal::ctrl_c() => {
-            info!("Ctrl+C received, shutting down Host Agent.");
+    // Loop until we can connect to the guest.
+    let mut stream = loop {
+        info!(
+            "Attempting to connect to guest on CID {} port {}",
+            VMADDR_CID_HOST, GUEST_PORT
+        );
+        match VsockStream::connect(&VsockAddr::new(VMADDR_CID_HOST, GUEST_PORT)) {
+            Ok(stream) => {
+                info!("Successfully connected to guest.");
+                break stream;
+            }
+            Err(e) => {
+                error!("Failed to connect to guest: {}. Retrying...", e);
+                thread::sleep(RETRY_DELAY);
+            }
         }
-    }
+    };
+
+    // 1. Send connection request
+    let local_addr = stream.local_addr()?;
+    let peer_addr = stream.peer_addr()?;
+    let req_hdr = VirtioVsockHdr {
+        src_cid: local_addr.cid(),
+        dst_cid: peer_addr.cid(),
+        src_port: local_addr.port(),
+        dst_port: peer_addr.port(),
+        len: 0, // No payload for the request
+        type_: VSOCK_TYPE_STREAM,
+        op: VSOCK_OP_REQUEST,
+        flags: 0,
+        buf_alloc: 0,
+        fwd_cnt: 0,
+    };
+    let req_packet = Packet::new(req_hdr, vec![]);
+    send_packet(&mut stream, req_packet)?;
+
+    // 2. Wait for confirmation
+    read_response(&mut stream)?;
+
+    // 3. Send data packet
+    let payload = b"hello from host-agent";
+    let rw_hdr = VirtioVsockHdr {
+        src_cid: local_addr.cid(),
+        dst_cid: peer_addr.cid(),
+        src_port: local_addr.port(),
+        dst_port: peer_addr.port(),
+        len: payload.len() as u32,
+        type_: VSOCK_TYPE_STREAM,
+        op: VSOCK_OP_RW,
+        flags: 0,
+        buf_alloc: 0,
+        fwd_cnt: 0,
+    };
+    let rw_packet = Packet::new(rw_hdr, payload.to_vec());
+    send_packet(&mut stream, rw_packet)?;
 
     Ok(())
 }
 
-/// Listens for and accepts new vsock connections from guests.
-async fn server_loop(mut listener: VsockListener) {
-    loop {
-        match listener.accept().await {
-            Ok((stream, addr)) => {
-                info!("[{:?}] Accepted connection from Guest Agent.", addr);
-                tokio::spawn(handle_connection(stream, addr));
+fn send_packet(stream: &mut VsockStream, packet: Packet) -> io::Result<()> {
+    let peer_addr = stream.peer_addr()?;
+    info!(
+        "[{}] Sending packet with op: {}",
+        peer_addr,
+        packet.hdr().op
+    );
+    stream.write_all(&packet.to_bytes())
+}
+
+fn read_response(stream: &mut VsockStream) -> io::Result<()> {
+    match Packet::from_read(stream) {
+        Ok(packet) => {
+            let (hdr, _) = packet.into_parts();
+            if hdr.op == VSOCK_OP_RESPONSE {
+                info!("Received VSOCK_OP_RESPONSE from guest. Connection successful.");
+            } else {
+                warn!("Received unexpected op {} from guest.", hdr.op);
             }
-            Err(e) => {
-                error!("Failed to accept connection: {}", e);
-            }
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to receive response from guest: {}", e);
+            Err(e)
         }
     }
 }
-
-/// Manages a single guest connection, processing packets in a loop.
-async fn handle_connection(stream: VsockStream, addr: VsockAddr) {
-    let (mut reader, _) = io::split(stream);
-
-    loop {
-        match process_packet(&mut reader, &addr).await {
-            Ok(_) => {
-                // Successfully processed a packet, continue to the next one.
-            }
-            Err(e) => {
-                // An error occurred (e.g., client disconnected).
-                info!("[{:?}] Closing connection: {}", addr, e);
-                break;
-            }
-        }
-    }
-}
-
-/// Reads and parses a single packet (header + payload) from the stream.
-async fn process_packet(reader: &mut ReadHalf<VsockStream>, addr: &VsockAddr) -> Result<(), io::Error> {
-    // 1. Read the fixed-size header.
-    let mut hdr_buf = vec![0; HDR_SIZE];
-    reader.read_exact(&mut hdr_buf).await?;
-
-    // 2. Parse the header.
-    let hdr = VirtioVsockHdr::from_bytes(&hdr_buf)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Failed to parse vsock header"))?;
-    info!("[{:?}] Received header: {:?}", addr, hdr);
-
-    // 3. Read the payload based on the length specified in the header.
-    let mut payload_buf = vec![0; hdr.len as usize];
-    reader.read_exact(&mut payload_buf).await?;
-    
-    let received = String::from_utf8_lossy(&payload_buf);
-    info!("[{:?}] Received payload: {}", addr, received);
-
-    Ok(())
-} 

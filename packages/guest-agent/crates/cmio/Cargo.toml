@@ -10,6 +10,7 @@ mock_cmio = []
 libc = "0.2"
 thiserror = "1.0"
 nix = { version = "0.27", features = ["ioctl"] }
+vsock-protocol = { path = "../../../vsock-protocol"}
 
 [lib]
 name = "cmio"

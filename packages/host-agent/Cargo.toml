@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-tokio-vsock = "0.7.1"
+vsock = "0.5.0"
 log = "0.4"
 env_logger = "0.10"
 vsock-protocol = { path = "../vsock-protocol" } 
