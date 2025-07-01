@@ -1,19 +1,17 @@
 use cmio::CmioIoDriver;
 use log::{error, info, warn};
-use std::cell::RefCell;
-use std::io::{self, Write};
+use std::io::{Read, Write};
 use std::process;
-use std::rc::Rc;
-use vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use vsock::{VsockAddr, VsockStream, VMADDR_CID_HOST};
 use vsock_protocol::{
-    Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RW, VSOCK_TYPE_STREAM,
+    Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_TYPE_STREAM,
 };
-
-const GUEST_LISTEN_PORT: u32 = 9000;
 
 fn main() {
     env_logger::init();
-    info!("Starting Guest Agent");
+    info!("Starting Guest Agent Proxy");
 
     if let Err(e) = run_agent() {
         error!("Agent failed: {}", e);
@@ -23,119 +21,123 @@ fn main() {
 
 /// Runs the main logic of the guest agent.
 fn run_agent() -> Result<(), Box<dyn std::error::Error>> {
-    let driver = Rc::new(RefCell::new(CmioIoDriver::new()?));
+    let driver = Arc::new(Mutex::new(CmioIoDriver::new()?));
     info!("CMIO driver initialized successfully");
 
-    let listener = VsockListener::bind(&VsockAddr::new(VMADDR_CID_ANY, GUEST_LISTEN_PORT))
-        .map_err(|e| {
-            error!("Failed to bind to vsock port {}: {}", GUEST_LISTEN_PORT, e);
-            e
-        })?;
+    // The agent will handle one connection at a time.
+    // The main loop waits for a connection request, handles it, and then returns
+    // to this state to wait for the next one.
+    info!("Waiting for a connection request from CMIo...");
+    let (req_hdr, _) = wait_for_cmio_request(driver.clone())?;
 
+    let peer_port = req_hdr.dst_port;
     info!(
-        "Guest agent is listening on vsock port {}",
-        GUEST_LISTEN_PORT
+        "Received connection request from CMIO for port {}. Attempting to connect to host...",
+        peer_port
     );
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                let addr = stream.peer_addr().unwrap();
-                info!("[{}] Accepted connection from host.", addr);
-                if let Err(e) = handle_host_stream(stream, driver.clone()) {
-                    error!("[{}] Error handling host connection: {}", addr, e);
-                }
+    match VsockStream::connect(&VsockAddr::new(VMADDR_CID_HOST, peer_port)) {
+        Ok(stream) => {
+            info!("[{}] Vsock connection to host successful.", peer_port);
+            if let Err(e) = handle_connection(stream, req_hdr, driver.clone()) {
+                error!("[{}] Connection handling failed: {}", peer_port, e);
             }
-            Err(e) => {
-                error!("Failed to accept incoming vsock connection: {}", e);
-            }
+            
+            info!("[{}] Connection closed.", peer_port);
         }
-    }
-
+        Err(e) => {
+            error!(
+                "[{}] Failed to connect to host on port {}: {}",
+                peer_port, peer_port, e
+            );
+        }
+    };
     Ok(())
 }
 
-/// Forwards packets from a host vsock stream to the CMIO driver.
-fn handle_host_stream(
-    mut stream: VsockStream,
-    driver: Rc<RefCell<CmioIoDriver>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let peer_addr = stream.peer_addr()?;
+/// Blocks until a `VSOCK_OP_REQUEST` packet is read from the CMIo driver.
+fn wait_for_cmio_request(
+    driver: Arc<Mutex<CmioIoDriver>>,
+) -> Result<(VirtioVsockHdr, Vec<u8>), Box<dyn std::error::Error>> {
+    loop {
+        // Poll request to connect to host from CMIO each 10 seconds
+        let packet_bytes = driver.lock().unwrap().send_cmio(&[], 1)?;
 
-    // 1. Perform handshake by reading the request and sending a response.
-    let req_packet = match Packet::from_read(&mut stream) {
-        Ok(p) => p,
-        Err(e) => {
-            if e.kind() != io::ErrorKind::UnexpectedEof {
-                error!("[{}] Failed to read request packet: {}", peer_addr, e);
-            }
-            return Err(e.into());
+        if packet_bytes.is_empty() {
+            continue;
         }
-    };
 
-    let (req_hdr, _) = req_packet.into_parts(); // Payload from request is ignored.
+        let packet = Packet::from_bytes(&packet_bytes)?;
+        return Ok(packet.into_parts());
+    }
+}
 
-    if req_hdr.op != VSOCK_OP_REQUEST {
+/// Handles a newly established connection by proxying data in both directions.
+fn handle_connection(
+    mut stream: VsockStream,
+    req_hdr: VirtioVsockHdr,
+    driver: Arc<Mutex<CmioIoDriver>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let port = req_hdr.dst_port;
+    info!("[{}] Performing vsock handshake with host...", port);
+
+    let request_packet = Packet::new(req_hdr, vec![]);
+    stream.write_all(&request_packet.to_bytes())?;
+
+    // Wait for a response from the host.
+    let response_packet = Packet::from_read(&mut stream)?;
+    if response_packet.hdr().op != VSOCK_OP_RESPONSE {
         warn!(
-            "[{}] Expected VSOCK_OP_REQUEST, got op {}. Ignoring.",
-            peer_addr, req_hdr.op
+            "[{}] Expected VSOCK_OP_RESPONSE, but got op {}",
+            port,
+            response_packet.hdr().op
         );
-        return Ok(());
+    } else {
+        info!("[{}] Received vsock handshake response from host.", port);
     }
 
-    info!("[{}] Received VSOCK_OP_REQUEST from host.", peer_addr);
-
-    let resp_hdr = VirtioVsockHdr {
-        src_cid: req_hdr.dst_cid,
-        dst_cid: req_hdr.src_cid,
-        src_port: req_hdr.dst_port,
-        dst_port: req_hdr.src_port,
-        len: 0,
-        type_: VSOCK_TYPE_STREAM,
-        op: VSOCK_OP_RESPONSE,
-        flags: 0,
-        buf_alloc: 0,
-        fwd_cnt: 0,
-    };
-    let resp_packet = Packet::new(resp_hdr, vec![]);
-    stream.write_all(&resp_packet.to_bytes())?;
-    info!(
-        "[{}] Sent VSOCK_OP_RESPONSE to host. Connection established.",
-        peer_addr
-    );
-
-    // 2. After handshake, loop for data packets (OP_RW).
+    // After the handshake, we enter a loop to proxy data between the host and
+    // the CMIo device.
     loop {
-        match Packet::from_read(&mut stream) {
+        // Read a packet from the vsock stream (from the host).
+        let host_packet = match Packet::from_read(&mut stream) {
             Ok(packet) => {
-                let (hdr, payload) = packet.into_parts();
-                if hdr.op == VSOCK_OP_RW {
-                    info!(
-                        "[{}] Received VSOCK_OP_RW with payload: '{:?}'",
-                        peer_addr, payload
-                    );
-
-                    let packet_bytes = Packet::new(hdr, payload).to_bytes();
-                    let domain = 1;
-                    let cmio_response = driver.borrow_mut().send_cmio(&packet_bytes, domain)?;
-
-                    // TODO: cmio response handling
-                    info!("[{}] Forwarded RW packet to CMIO.", peer_addr);
-                } else {
-                    warn!("[{}] Received unhandled op: {}", peer_addr, hdr.op);
-                }
+                info!(
+                    "[{}] Received packet from host: {:?}, payload_len: {}",
+                    port,
+                    packet.hdr(),
+                    packet.payload().len()
+                );
+                packet
             }
             Err(e) => {
-                if e.kind() == io::ErrorKind::UnexpectedEof {
-                    info!("[{}] Connection closed by host.", peer_addr);
-                } else {
-                    error!("[{}] Error reading vsock packet: {}", peer_addr, e);
-                }
+                // An error here likely means the host has closed the connection.
+                info!(
+                    "[{}] Failed to read from vsock stream, assuming connection closed: {}",
+                    port, e
+                );
                 break;
             }
+        };
+
+        // Forward the packet to the CMIo device and get a response.
+        let cmio_response_bytes =
+            driver.lock().unwrap().send_cmio(&host_packet.to_bytes(), 1)?;
+
+        if cmio_response_bytes.is_empty() {
+            warn!("[{}] Received empty response from CMIO.", port);
+            continue;
+        }
+
+        // Forward the response from the CMIo device back to the host.
+        if let Err(e) = stream.write_all(&cmio_response_bytes) {
+            error!(
+                "[{}] Failed to write to vsock stream, closing connection: {}",
+                port, e
+            );
+            break;
         }
     }
 
-    info!("[{}] Stream handling finished.", peer_addr);
     Ok(())
 }

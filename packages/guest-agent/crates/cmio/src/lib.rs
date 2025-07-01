@@ -16,6 +16,8 @@ pub use mock::CmioIoDriver;
 pub enum CmioError {
     #[error("Invalid argument")]
     InvalidArgument,
+    #[error("Invalid response from CMIo")]
+    InvalidResponse,
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("Memory mapping failed")]

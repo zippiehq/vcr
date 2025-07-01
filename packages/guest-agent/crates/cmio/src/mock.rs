@@ -2,7 +2,7 @@ use super::{CmioError, Result, CmioYield};
 use vsock_protocol::{
     VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RW, VSOCK_TYPE_STREAM,
 };
-
+use std::thread;
 const GUEST_CID: u32 = 5;
 const HOST_CID: u32 = 3;
 const HOST_PORT: u32 = 9000;
@@ -51,7 +51,7 @@ impl CmioIoDriver {
 
     /// Prepares a VSOCK_OP_RW packet with a sample payload.
     fn prepare_data_packet(&mut self) {
-        let payload = b"hello from mock host";
+        let payload = b"hello from cmio";
         let data_hdr = VirtioVsockHdr {
             src_cid: HOST_CID,
             dst_cid: GUEST_CID,
@@ -107,6 +107,7 @@ impl CmioIoDriver {
             return Err(CmioError::InvalidArgument);
         }
         self.tx_slice_mut()[..tx_data.len()].copy_from_slice(tx_data);
+        thread::sleep(std::time::Duration::from_secs(10));
 
         // If the guest sent any data, parse the header.
         if !tx_data.is_empty() {
@@ -115,6 +116,9 @@ impl CmioIoDriver {
                 // we mark the connection as established.
                 if hdr.op == VSOCK_OP_RESPONSE && !self.is_established {
                     self.is_established = true;
+                } else if hdr.op == VSOCK_OP_RW {
+                    self.prepare_data_packet();
+                    return Ok(self.rx_buf.clone());
                 }
             }
         }

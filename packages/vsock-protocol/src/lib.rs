@@ -59,6 +59,34 @@ impl Packet {
 
         Ok(Self { hdr, payload })
     }
+
+    /// Creates a packet from a byte slice.
+    /// The byte slice is expected to contain the full packet (header + payload).
+    pub fn from_bytes(bytes: &[u8]) -> io::Result<Self> {
+        if bytes.len() < HDR_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Packet smaller than header",
+            ));
+        }
+
+        let hdr = VirtioVsockHdr::from_bytes(&bytes[..HDR_SIZE])
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Invalid vsock header"))?;
+
+        let payload_len = hdr.len as usize;
+        let expected_total_len = HDR_SIZE + payload_len;
+
+        if bytes.len() < expected_total_len {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Packet smaller than indicated by header length",
+            ));
+        }
+
+        let payload = bytes[HDR_SIZE..expected_total_len].to_vec();
+
+        Ok(Self { hdr, payload })
+    }
 }
 
 /// The header for a virtio vsock packet.
