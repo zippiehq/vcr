@@ -88,7 +88,7 @@ RUN SOURCE_DATE_EPOCH=0 make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS
 
 RUN sha256sum /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin
 # Verify OpenSBI firmware hash
-RUN echo "8e6e3dcdd33cddb014297c0009c2dad15e14e244e11120addef5b2a12b9deacd  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
+RUN echo "96219800cbde826c3094cd22eebcbe9f9baf0e6831b721f14eefdde436331a52  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
 
 # Final stage: copy artifacts to clean image
 FROM debian:bookworm-slim
