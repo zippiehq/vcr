@@ -1,10 +1,13 @@
-From b4f77f8636a10b655d92dad80356688de1664b8f Mon Sep 17 00:00:00 2001
+From 4b2b9b2b7d6292ffa01cf1e2385fcfcdd1b66dec Mon Sep 17 00:00:00 2001
 From: Joanne-cmd <joanne.m.muthoni@gmail.com>
 Date: Wed, 2 Jul 2025 10:08:06 +0000
 Subject: [PATCH] cartesi: port cmio to 6.15
 
+also, use SBI v0.1 API even when v0.3+ is available.
+
 Signed-off-by: Joanne-cmd <joanne.m.muthoni@gmail.com>
 ---
+ arch/riscv/kernel/sbi.c                       |   2 +-
  drivers/Kconfig                               |   2 +
  drivers/Makefile                              |   2 +
  drivers/cartesi/Kconfig                       |  31 +++
@@ -15,7 +18,7 @@ Signed-off-by: Joanne-cmd <joanne.m.muthoni@gmail.com>
  .../selftests/drivers/cartesi/Makefile        |   8 +
  .../selftests/drivers/cartesi/cmio_echo.c     |  41 +++
  .../drivers/cartesi/cmio_open_twice.c         |  28 ++
- 10 files changed, 395 insertions(+)
+ 11 files changed, 396 insertions(+), 1 deletion(-)
  create mode 100644 drivers/cartesi/Kconfig
  create mode 100644 drivers/cartesi/Makefile
  create mode 100644 drivers/cartesi/cmio.c
@@ -24,6 +27,19 @@ Signed-off-by: Joanne-cmd <joanne.m.muthoni@gmail.com>
  create mode 100644 tools/testing/selftests/drivers/cartesi/cmio_echo.c
  create mode 100644 tools/testing/selftests/drivers/cartesi/cmio_open_twice.c
 
+diff --git a/arch/riscv/kernel/sbi.c b/arch/riscv/kernel/sbi.c
+index 1989b8cade1b..2ca14d859e12 100644
+--- a/arch/riscv/kernel/sbi.c
++++ b/arch/riscv/kernel/sbi.c
+@@ -588,7 +588,7 @@ void __init sbi_init(void)
+ 	pr_info("SBI specification v%lu.%lu detected\n",
+ 		sbi_major_version(), sbi_minor_version());
+ 
+-	if (!sbi_spec_is_0_1()) {
++	if (!sbi_spec_is_0_1() && !CONFIG_RISCV_SBI_V01) {
+ 		pr_info("SBI implementation ID=0x%lx Version=0x%lx\n",
+ 			sbi_get_firmware_id(), sbi_get_firmware_version());
+ 		if (sbi_probe_extension(SBI_EXT_TIME)) {
 diff --git a/drivers/Kconfig b/drivers/Kconfig
 index 7c556c5ac4fd..d93aa590aeac 100644
 --- a/drivers/Kconfig
