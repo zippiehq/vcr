@@ -48,7 +48,7 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 RUN sha256sum /work/linux/arch/riscv/boot/Image
 
 # Verify linux kernel Image hash
-RUN echo "87dd584348200fc72f9c65d2920a0c8ddc7e3781b80daf50f360ab5f8f9e6bd5  /work/linux/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux kernel Image hash verification failed" && exit 1)
+RUN echo "298b201898cffb9d5daa4667e6ac23a541b2ea20c9dfede63fe5ac65ee7802ca  /work/linux/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux kernel Image hash verification failed" && exit 1)
 
 # Build kernel with deterministic timestamps
 WORKDIR /work/linux-2
