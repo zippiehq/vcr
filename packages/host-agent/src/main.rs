@@ -51,93 +51,43 @@ fn handle_guest_stream(
     mut stream: VsockStream,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let peer_addr = stream.peer_addr()?;
-    info!(
-        "[{}] Accepted connection. Waiting for handshake...",
-        peer_addr
-    );
-
-    // 1. Perform handshake by reading the request and sending a response.
-    let req_packet = match Packet::from_read(&mut stream) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("[{}] Failed to read request packet: {}", peer_addr, e);
-            return Err(e.into());
-        }
-    };
-
-    let (req_hdr, _) = req_packet.into_parts(); // Payload from request is ignored.
-
-    if req_hdr.op != VSOCK_OP_REQUEST {
-        warn!(
-            "[{}] Expected VSOCK_OP_REQUEST, got op {}. Closing connection.",
-            peer_addr, req_hdr.op
-        );
-        return Ok(());
-    }
 
     info!(
         "[{}] Received VSOCK_OP_REQUEST from guest. Sending response.",
         peer_addr
     );
 
-    let resp_hdr = VirtioVsockHdr {
-        src_cid: req_hdr.dst_cid,
-        dst_cid: req_hdr.src_cid,
-        src_port: req_hdr.dst_port,
-        dst_port: req_hdr.src_port,
-        len: 0,
-        type_: VSOCK_TYPE_STREAM,
-        op: VSOCK_OP_RESPONSE,
-        flags: 0,
-        buf_alloc: 0,
-        fwd_cnt: 0,
-    };
-    let resp_packet = Packet::new(resp_hdr, vec![]);
-    stream.write_all(&resp_packet.to_bytes())?;
+    stream.write_all(&[])?;
     info!(
         "[{}] Sent VSOCK_OP_RESPONSE to guest. Handshake complete.",
         peer_addr
     );
 
-    for _ in 0..10 {
-        // 2. After handshake, send a single packet and read one response.
-        let request_payload = b"Test packet from host".to_vec();
-        let request_hdr = VirtioVsockHdr {
-            src_cid: req_hdr.dst_cid,
-            dst_cid: req_hdr.src_cid,
-            src_port: req_hdr.dst_port,
-            dst_port: req_hdr.src_port,
-            len: request_payload.len() as u32,
-            type_: VSOCK_TYPE_STREAM,
-            op: VSOCK_OP_RW,
-            flags: 0,
-            buf_alloc: 0,
-            fwd_cnt: 0,
-        };
-        let request_packet = Packet::new(request_hdr, request_payload);
-
-        info!("[{}] Sending a test packet to the guest.", peer_addr);
-        stream.write_all(&request_packet.to_bytes())?;
-
-        // Read the response packet from the guest.
-        match Packet::from_read(&mut stream) {
-            Ok(packet) => {
-                info!(
-                    "[{}] Received response from guest with op {} and {} bytes of payload.",
-                    peer_addr,
-                    packet.hdr().op,
-                    packet.payload().len()
-                );
+    let mut buf = [0; 4096];
+    loop {
+        match stream.read(&mut buf) {
+            Ok(0) => {
+                info!("[{}] Guest closed the connection.", peer_addr);
+                break;
+            }
+            Ok(n) => {
+                info!("[{}] Received {} bytes, echoing back.", peer_addr, n);
+                if let Err(e) = stream.write_all(&buf[..n]) {
+                    error!(
+                        "[{}] Failed to write to vsock stream, closing connection: {}",
+                        peer_addr, e
+                    );
+                    break;
+                }
             }
             Err(e) => {
                 error!(
-                    "[{}] Failed to read response packet from guest: {}",
+                    "[{}] Failed to read from vsock stream, closing connection: {}",
                     peer_addr, e
                 );
-                return Err(e.into());
+                break;
             }
-        };
-        thread::sleep(std::time::Duration::from_secs(30));
+        }
     }
 
     info!("[{}] Shutting down stream", peer_addr);
