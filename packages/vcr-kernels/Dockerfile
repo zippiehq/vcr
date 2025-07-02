@@ -45,6 +45,8 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
 
+RUN sha256sum /work/linux/arch/riscv/boot/Image
+
 # Verify linux kernel Image hash
 RUN echo "569193ad95b936a08fd9edf1bf5fe024b4aa46dd452fd6a1373d009152c9df49  /work/linux/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux kernel Image hash verification failed" && exit 1)
 
