@@ -13,32 +13,34 @@ WORKDIR /work
 
 # Download and verify Cartesi Linux kernel - note: this can be updated to non-cartesi 6.15.3
 RUN mkdir -p dep && \
-    wget -O dep/linux-6.5.13-ctsi-1.tar.gz https://github.com/cartesi/linux/archive/refs/tags/v6.5.13-ctsi-1.tar.gz && \
-    echo "24f3326aad2aa630c6fb2192305b70963ca67c03b0218cdcd09033cbefc9e52d  dep/linux-6.5.13-ctsi-1.tar.gz" | sha256sum -c
+    wget -O dep/linux-6.15.4.tar.xz https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.15.4.tar.xz && \
+    echo "0eafd627b602f58d73917d00e4fc3196ba18cba67df6995a42aa74744d8efa16  dep/linux-6.15.4.tar.xz" | sha256sum -c
 
 # Download and verify OpenSBI
 RUN wget -O dep/opensbi-1.3.1-ctsi-2.tar.gz https://github.com/cartesi/opensbi/archive/refs/tags/v1.3.1-ctsi-2.tar.gz && \
     echo "35082380131117aa8424d1b81ca9e6e0280baa9bffbcf3f46080a652e4cb4385  dep/opensbi-1.3.1-ctsi-2.tar.gz" | sha256sum -c
 
 # Extract Linux kernel
-RUN tar xzf dep/linux-6.5.13-ctsi-1.tar.gz \
+RUN tar xf dep/linux-6.15.4.tar.xz \
   --strip-components=1 --one-top-level=linux
 
 RUN mv linux linux-2
-RUN tar xzf dep/linux-6.5.13-ctsi-1.tar.gz \
+RUN tar xf dep/linux-6.15.4.tar.xz \
   --strip-components=1 --one-top-level=linux && \
-  rm dep/linux-6.5.13-ctsi-1.tar.gz
+  rm dep/linux-6.15.4.tar.xz
 
 # Extract OpenSBI
 RUN tar xzf dep/opensbi-1.3.1-ctsi-2.tar.gz \
   --strip-components=1 --one-top-level=opensbi && \
   rm dep/opensbi-1.3.1-ctsi-2.tar.gz
 
-# Copy kernel configuration
+# Copy CM kernel configuration
 COPY kernel-config linux/.config
 
 # Build kernel with deterministic timestamps
 WORKDIR /work/linux
+COPY 0001-cartesi-port-cmio-to-6.15.patch /work/linux/0001-cartesi-port-cmio-to-6.15.patch
+RUN patch -p1 < 0001-cartesi-port-cmio-to-6.15.patch
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) olddefconfig
 
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image

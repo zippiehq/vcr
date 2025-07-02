@@ -1,0 +1,494 @@
+From d6ddb0a5812616142d8c5afc1fe18befd9529e6b Mon Sep 17 00:00:00 2001
+From: Joanne-cmd <joanne.m.muthoni@gmail.com>
+Date: Wed, 2 Jul 2025 10:08:06 +0000
+Subject: [PATCH] cartesi: port cmio to 6.15
+
+Signed-off-by: Joanne-cmd <joanne.m.muthoni@gmail.com>
+---
+ drivers/Kconfig                               |   2 +
+ drivers/Makefile                              |   2 +
+ drivers/cartesi/Kconfig                       |  31 +++
+ drivers/cartesi/Makefile                      |   1 +
+ drivers/cartesi/cmio.c                        | 241 ++++++++++++++++++
+ include/uapi/linux/cartesi/cmio.h             |  40 +++
+ tools/testing/selftests/Makefile              |   1 +
+ .../selftests/drivers/cartesi/Makefile        |   8 +
+ .../selftests/drivers/cartesi/cmio_echo.c     |  41 +++
+ .../drivers/cartesi/cmio_open_twice.c         |  28 ++
+ 10 files changed, 395 insertions(+)
+ create mode 100644 drivers/cartesi/Kconfig
+ create mode 100644 drivers/cartesi/Makefile
+ create mode 100644 drivers/cartesi/cmio.c
+ create mode 100644 include/uapi/linux/cartesi/cmio.h
+ create mode 100644 tools/testing/selftests/drivers/cartesi/Makefile
+ create mode 100644 tools/testing/selftests/drivers/cartesi/cmio_echo.c
+ create mode 100644 tools/testing/selftests/drivers/cartesi/cmio_open_twice.c
+
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index 7c556c5ac4fd..d93aa590aeac 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -247,4 +247,6 @@ source "drivers/cdx/Kconfig"
+ 
+ source "drivers/dpll/Kconfig"
+ 
++source "drivers/cartesi/Kconfig"
++
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index b5749cf67044..33dc47ab9e70 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -196,3 +196,5 @@ obj-$(CONFIG_CDX_BUS)		+= cdx/
+ obj-$(CONFIG_DPLL)		+= dpll/
+ 
+ obj-$(CONFIG_S390)		+= s390/
++
++obj-$(CONFIG_CARTESI_MACHINE) += cartesi/
+diff --git a/drivers/cartesi/Kconfig b/drivers/cartesi/Kconfig
+new file mode 100644
+index 000000000000..6df6e546dac2
+--- /dev/null
++++ b/drivers/cartesi/Kconfig
+@@ -0,0 +1,31 @@
++menu "Cartesi Machine"
++
++config CARTESI_MACHINE
++    bool "Cartesi Machine "
++    depends on RISCV_SBI
++    default y if  RISCV_SBI
++    help
++        Enable support for the Cartesi Machine
++
++config CARTESI_YIELD_DRIVER
++    bool "Cartesi Machine Yield Device"
++    depends on CARTESI_MACHINE
++    default y
++    help
++        Cartesi Machine Yield Device
++
++config CARTESI_MACHINE_IO_DRIVER
++    bool "Cartesi Machine IO Device"
++    depends on CARTESI_MACHINE
++    default y
++    help
++        Cartesi Machine IO Device
++
++config CARTESI_HALT_ON_PANIC
++    bool "Halt machine on kernel panic"
++    depends on CARTESI_MACHINE
++    default y
++    help
++        Halt machine on kernel panic
++
++endmenu
+diff --git a/drivers/cartesi/Makefile b/drivers/cartesi/Makefile
+new file mode 100644
+index 000000000000..770e45f204ea
+--- /dev/null
++++ b/drivers/cartesi/Makefile
+@@ -0,0 +1 @@
++obj-$(CONFIG_CARTESI_MACHINE_IO_DRIVER) += cmio.o
+diff --git a/drivers/cartesi/cmio.c b/drivers/cartesi/cmio.c
+new file mode 100644
+index 000000000000..d3e225fece3f
+--- /dev/null
++++ b/drivers/cartesi/cmio.c
+@@ -0,0 +1,241 @@
++////// SPDX-License-Identifier: GPL-2.0
++/*
++ * Cartesi cmio device.
++ * Copyright (C) 2023 Cartesi Machine reference unit
++ */
++
++#include <linux/kernel.h>
++#include <linux/mm.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++#include <linux/ioctl.h>
++#include <linux/uaccess.h>
++#include <linux/fs.h>
++#include <linux/device.h>
++#include <linux/miscdevice.h>
++#include <linux/platform_device.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <asm/sbi.h>
++#include <uapi/linux/cartesi/cmio.h>
++
++#define DEVICE_NAME "cmio"
++#define MODULE_DESC "Cartesi Machine " DEVICE_NAME " device"
++
++#define SBI_YIELD 9
++
++struct cmio_device {
++	struct platform_device *pdev;
++	struct miscdevice mdev;
++	struct cmio_setup bufs;
++	atomic_t single_user_lock;
++};
++
++static struct cmio_device *to_cmio_device(struct file *file)
++{
++	struct miscdevice *dev = file->private_data;
++	return container_of(dev, struct cmio_device, mdev);
++}
++
++static long cmio_ioctl_setup(struct cmio_device *me, unsigned long arg)
++{
++	if (copy_to_user((void __user *)arg, &me->bufs, sizeof me->bufs))
++		return -EFAULT;
++
++	return 0;
++}
++
++static long cmio_ioctl_yield(struct cmio_device *me, unsigned long arg)
++{
++	__u64 req = 0,
++	      rep = 0;
++
++	if (copy_from_user(&req, (void __user *)arg, sizeof req))
++		return -EFAULT;
++
++	rep = sbi_ecall(SBI_YIELD, 0, req, 0, 0, 0, 0, 0).value;
++
++	if (copy_to_user((void __user *)arg, &rep, sizeof rep))
++		return -EFAULT;
++
++	return 0;
++}
++
++/*
++ * We enforce only one user at a time here with the open/release.
++ */
++static int cmio_open(struct inode *inode, struct file *file)
++{
++	struct cmio_device *cmio = to_cmio_device(file);
++	if (!cmio)
++		return -EBADF;
++
++	if (!atomic_inc_and_test(&cmio->single_user_lock)) {
++		atomic_dec(&cmio->single_user_lock);
++		return -EBUSY;
++	}
++	return 0;
++}
++
++static int cmio_release(struct inode *inode, struct file *file)
++{
++	struct cmio_device *cmio = to_cmio_device(file);
++	if (!cmio)
++		return -EBADF;
++
++	atomic_dec(&cmio->single_user_lock);
++	return 0;
++}
++
++static long cmio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	struct cmio_device *cmio = to_cmio_device(file);
++	if (!cmio)
++		return -EBADF;
++
++	switch (cmd) {
++	case IOCTL_CMIO_SETUP:
++		return cmio_ioctl_setup(cmio, arg);
++	case IOCTL_CMIO_YIELD:
++		return cmio_ioctl_yield(cmio, arg);
++	}
++	return -ENOIOCTLCMD;
++}
++
++static int cmio_mmap(struct file *file, struct vm_area_struct *vma)
++{
++	__u64 vma_size;
++	struct cmio_device *cmio = to_cmio_device(file);
++	if (!cmio)
++		return -EBADF;
++
++	vma_size = vma->vm_end - vma->vm_start;
++	if (!((vma->vm_start == cmio->bufs.tx.data && vma_size == cmio->bufs.tx.length)
++	||    (vma->vm_start == cmio->bufs.rx.data && vma_size == cmio->bufs.rx.length)))
++		return -EINVAL;
++
++	return remap_pfn_range(vma,
++	                       vma->vm_start,
++	                       vma->vm_start >> PAGE_SHIFT,
++	                       vma_size,
++	                       vma->vm_page_prot);
++}
++
++static const struct file_operations cmio_fileops = {
++	.open           = cmio_open,
++	.release        = cmio_release,
++	.unlocked_ioctl = cmio_ioctl,
++	.mmap           = cmio_mmap,
++	.owner          = THIS_MODULE,
++};
++
++static int setup_buffer(struct device_node *parent, const char *name, struct cmio_buffer *buf)
++{
++	u64 xs[2];
++	int rc = -EIO;
++	struct device_node *node = NULL;
++
++	if (!(node = of_find_node_by_name(parent, name)))
++		goto leave;
++	if (of_property_read_u64_array(node, "reg", xs, 2))
++		goto leave;
++	if (!(buf->data = xs[0]))
++		goto leave;
++	if (!(buf->length = xs[1]))
++		goto leave;
++	rc = 0;
++leave:
++	of_node_put(node);
++	return rc;
++}
++
++static int check_yield_automatic_and_manual(struct device_node *node)
++{
++	return !(of_property_read_bool(node, "automatic")
++	&&       of_property_read_bool(node, "manual"));
++}
++
++static int setup_io(struct cmio_device *cmio)
++{
++	int rc = -EIO;
++	struct device_node *cmio_node = NULL,
++	                   *yield_node = NULL;
++
++	if (!(cmio_node = of_find_node_by_path("/cmio"))
++	||  setup_buffer(cmio_node, "tx_buffer", &cmio->bufs.tx)
++	||  setup_buffer(cmio_node, "rx_buffer", &cmio->bufs.rx))
++		goto leave;
++
++	if (!(yield_node = of_find_node_by_path("/yield"))
++	||    check_yield_automatic_and_manual(yield_node))
++		goto leave;
++	rc = 0;
++leave:
++	of_node_put(yield_node);
++	of_node_put(cmio_node);
++	return rc;
++}
++
++static int cmio_driver_probe(struct platform_device *pdev)
++{
++	int rc;
++	struct cmio_device *cmio;
++
++	cmio = devm_kzalloc(&pdev->dev, sizeof(*cmio), GFP_KERNEL);
++	if (!cmio)
++		return -ENOMEM;
++
++	atomic_set(&cmio->single_user_lock, -1);
++	cmio->mdev.minor = MISC_DYNAMIC_MINOR;
++	cmio->mdev.name  = DEVICE_NAME;
++	cmio->mdev.fops  = &cmio_fileops;
++	rc = misc_register(&cmio->mdev);
++	if (rc) {
++		dev_err(&pdev->dev, "failed to register miscdevice\n");
++		goto leave;
++	}
++
++	rc = setup_io(cmio);
++	if (rc) {
++		dev_err(&pdev->dev, "failed to parse device tree\n");
++		goto deregister;
++	}
++
++	platform_set_drvdata(pdev, cmio);
++	cmio->pdev = pdev;
++
++	pr_info(MODULE_DESC ": Module loaded\n");
++	return 0;
++
++deregister:
++	misc_deregister(&cmio->mdev);
++leave:
++	return rc;
++}
++
++static int cmio_driver_remove(struct platform_device *pdev)
++{
++	struct cmio_device *cmio = platform_get_drvdata(pdev);
++	misc_deregister(&cmio->mdev);
++	dev_info(&pdev->dev, "unregistered\n");
++	return 0;
++}
++
++static const struct of_device_id cmio_match[] = {
++	{.compatible = "ctsi-cmio",}, {},
++};
++MODULE_DEVICE_TABLE(of, cmio_match);
++
++static struct platform_driver cmio_driver = {
++	.driver = {
++		.name = DEVICE_NAME,
++		.of_match_table = cmio_match,
++	},
++	.probe = cmio_driver_probe,
++	.remove = cmio_driver_remove,
++};
++
++module_platform_driver(cmio_driver);
++
++MODULE_DESCRIPTION(MODULE_DESC);
++MODULE_LICENSE("GPL");
+diff --git a/include/uapi/linux/cartesi/cmio.h b/include/uapi/linux/cartesi/cmio.h
+new file mode 100644
+index 000000000000..ef2e8b2f7ebe
+--- /dev/null
++++ b/include/uapi/linux/cartesi/cmio.h
+@@ -0,0 +1,40 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++/*
++ * Cartesi cmio device.
++ * Copyright (C) 2023-2024 Cartesi Machine reference unit
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 as published by
++ * the Free Software Foundation.
++ */
++
++#ifndef _UAPI_LINUX_CARTESI_CMIO_H
++#define _UAPI_LINUX_CARTESI_CMIO_H
++#include <linux/types.h>
++#include <linux/ioctl.h>
++
++struct cmio_buffer {
++	__u64 data;
++	__u64 length;
++};
++
++struct cmio_setup {
++	struct cmio_buffer tx, rx;
++};
++
++/** Return a @p cmio_setup structure filled with tx and rx buffer details. Use
++ * these values to mmap them into the user-space.
++ *
++ * @return
++ *  0 on success.
++ * -1 on error and errno is set. */
++#define IOCTL_CMIO_SETUP _IOR  (0xd3, 0, struct cmio_setup)
++
++/** Yield the machine execution and transfer control back to the emulator.
++ *
++ * @return
++ *  0 on success.
++ * -1 on error and errno is set. */
++#define IOCTL_CMIO_YIELD _IOWR (0xd3, 1, __u64)
++
++#endif
+diff --git a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
+index 9c477321a5b4..fde0c7681f3a 100644
+--- a/tools/testing/selftests/Makefile
++++ b/tools/testing/selftests/Makefile
+@@ -25,6 +25,7 @@ TARGETS += drivers/net/bonding
+ TARGETS += drivers/net/team
+ TARGETS += drivers/net/virtio_net
+ TARGETS += drivers/platform/x86/intel/ifs
++TARGETS += drivers/cartesi
+ TARGETS += dt
+ TARGETS += efivarfs
+ TARGETS += exec
+diff --git a/tools/testing/selftests/drivers/cartesi/Makefile b/tools/testing/selftests/drivers/cartesi/Makefile
+new file mode 100644
+index 000000000000..898ba5f65d20
+--- /dev/null
++++ b/tools/testing/selftests/drivers/cartesi/Makefile
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: GPL-2.0-only
++CFLAGS += -I../../../../../usr/include/
++
++TEST_GEN_PROGS := cmio_echo cmio_open_twice
++
++top_srcdir ?=../../../../..
++
++include ../../lib.mk
+diff --git a/tools/testing/selftests/drivers/cartesi/cmio_echo.c b/tools/testing/selftests/drivers/cartesi/cmio_echo.c
+new file mode 100644
+index 000000000000..5f199758de12
+--- /dev/null
++++ b/tools/testing/selftests/drivers/cartesi/cmio_echo.c
+@@ -0,0 +1,41 @@
++#include <stdint.h>
++#include <inttypes.h>
++#include <fcntl.h>
++#include <sys/ioctl.h>
++#include <linux/cartesi/cmio.h>
++#include "../../kselftest_harness.h"
++
++#define DEVICE_NAME "/dev/cmio"
++
++FIXTURE(cmio) {
++	int fd;
++};
++FIXTURE_SETUP(cmio) {
++	self->fd = open(DEVICE_NAME, O_RDWR);
++	ASSERT_GT(self->fd, 0) {
++		TH_LOG("fixture error: %s\n", strerror(errno));
++	}
++}
++FIXTURE_TEARDOWN(cmio) {
++	close(self->fd);
++}
++
++TEST_F(cmio, echo) {
++	const int tx_prot = PROT_READ | PROT_WRITE,
++	          rx_prot = PROT_READ;
++
++	struct cmio_setup setup;
++
++	ASSERT_EQ(ioctl(self->fd, IOCTL_CMIO_SETUP, (unsigned long) &setup), 0);
++	uint8_t *tx = mmap((void *)setup.tx.data, setup.tx.length, tx_prot, MAP_SHARED, self->fd, 0);
++	uint8_t *rx = mmap((void *)setup.rx.data, setup.rx.length, rx_prot, MAP_SHARED, self->fd, 0);
++
++	ASSERT_NE(tx, MAP_FAILED);
++	ASSERT_NE(rx, MAP_FAILED);
++	uint64_t length =
++		setup.rx.length < setup.tx.length?
++		setup.rx.length : setup.tx.length;
++	memcpy(tx, rx, length);
++}
++
++TEST_HARNESS_MAIN
+diff --git a/tools/testing/selftests/drivers/cartesi/cmio_open_twice.c b/tools/testing/selftests/drivers/cartesi/cmio_open_twice.c
+new file mode 100644
+index 000000000000..4de83970aa50
+--- /dev/null
++++ b/tools/testing/selftests/drivers/cartesi/cmio_open_twice.c
+@@ -0,0 +1,28 @@
++#include <stdint.h>
++#include <inttypes.h>
++#include <fcntl.h>
++#include <sys/ioctl.h>
++#include <linux/cartesi/cmio.h>
++#include "../../kselftest_harness.h"
++
++#define DEVICE_NAME "/dev/cmio"
++
++FIXTURE(cmio) {
++	int fd;
++};
++FIXTURE_SETUP(cmio) {
++	self->fd = open(DEVICE_NAME, O_RDWR);
++	ASSERT_GT(self->fd, 0) {
++		TH_LOG("fixture error: %s\n", strerror(errno));
++	}
++}
++FIXTURE_TEARDOWN(cmio) {
++	close(self->fd);
++}
++
++TEST_F(cmio, open_again) {
++	ASSERT_LT(open(DEVICE_NAME, O_RDWR), 0);
++}
++
++TEST_HARNESS_MAIN
++
+-- 
+2.34.1
+
