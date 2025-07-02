@@ -80,12 +80,13 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 
 # Verify linux-2 kernel Image hash
 RUN sha256sum /work/linux-2/arch/riscv/boot/Image
-RUN echo "e0bf1ba70f6862ac2db6eb3ba5c64a065026b2ead39292c117dbab9a8ae8899f  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
+RUN echo "e2cc19987a6789cd4ce9c3c7e0eccf33913ea51fde166d5bdc99df240227e37b  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
 
 # Build OpenSBI with kernel payload
 WORKDIR /work/opensbi
 RUN SOURCE_DATE_EPOCH=0 make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS_COMPILE=riscv64-linux-gnu- FW_PAYLOAD_PATH=/work/linux/arch/riscv/boot/Image
 
+RUN sha256sum /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin
 # Verify OpenSBI firmware hash
 RUN echo "8e6e3dcdd33cddb014297c0009c2dad15e14e244e11120addef5b2a12b9deacd  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
 
