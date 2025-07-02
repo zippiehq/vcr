@@ -1,4 +1,4 @@
-From d6ddb0a5812616142d8c5afc1fe18befd9529e6b Mon Sep 17 00:00:00 2001
+From b4f77f8636a10b655d92dad80356688de1664b8f Mon Sep 17 00:00:00 2001
 From: Joanne-cmd <joanne.m.muthoni@gmail.com>
 Date: Wed, 2 Jul 2025 10:08:06 +0000
 Subject: [PATCH] cartesi: port cmio to 6.15
@@ -91,7 +91,7 @@ index 000000000000..770e45f204ea
 +obj-$(CONFIG_CARTESI_MACHINE_IO_DRIVER) += cmio.o
 diff --git a/drivers/cartesi/cmio.c b/drivers/cartesi/cmio.c
 new file mode 100644
-index 000000000000..d3e225fece3f
+index 000000000000..ce6e81c2b34a
 --- /dev/null
 +++ b/drivers/cartesi/cmio.c
 @@ -0,0 +1,241 @@
@@ -310,12 +310,12 @@ index 000000000000..d3e225fece3f
 +	return rc;
 +}
 +
-+static int cmio_driver_remove(struct platform_device *pdev)
++static void cmio_driver_remove(struct platform_device *pdev)
 +{
 +	struct cmio_device *cmio = platform_get_drvdata(pdev);
 +	misc_deregister(&cmio->mdev);
 +	dev_info(&pdev->dev, "unregistered\n");
-+	return 0;
++	return;
 +}
 +
 +static const struct of_device_id cmio_match[] = {
