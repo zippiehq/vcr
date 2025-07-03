@@ -75,6 +75,8 @@ RUN echo "CONFIG_SQUASHFS=y" >> .config && \
     echo "# CONFIG_SQUASHFS_EMBEDDED is not set" >> .config && \
     echo "CONFIG_SQUASHFS_FRAGMENT_CACHE_SIZE=3" >> .config && \
     echo "CONFIG_OVERLAY_FS=y" >> .config
+    echo "CONFIG_VSOCKETS=y" >> .config
+    echo "CONFIG_VIRTIO_VSOCKETS=y" >> .config
 
 RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) vmlinux Image
 
