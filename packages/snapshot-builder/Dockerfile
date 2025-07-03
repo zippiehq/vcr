@@ -22,6 +22,7 @@ FROM debian:bookworm-slim
 # Install required packages
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
+    	procps \
         lua5.4 \
         libslirp0 \
         squashfs-tools \
