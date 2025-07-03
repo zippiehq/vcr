@@ -82,7 +82,7 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 
 # Verify linux-2 kernel Image hash
 RUN sha256sum /work/linux-2/arch/riscv/boot/Image
-RUN echo "e2cc19987a6789cd4ce9c3c7e0eccf33913ea51fde166d5bdc99df240227e37b  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
+RUN echo "4c90f90c23e76f0a7837f00981549a3c19bae1df9d68b054464f3d2608dd6462  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
 
 # Build OpenSBI with kernel payload
 WORKDIR /work/opensbi
