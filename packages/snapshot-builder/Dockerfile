@@ -1,5 +1,20 @@
 # Pull vcr-kernels image if not available locally
+
+
 FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels:latest as kernels
+
+FROM rust:1.85.1 as vhost
+
+WORKDIR /build
+
+RUN git clone --depth=1 -b feat/forward_map https://github.com/zippiehq/vhost-device.git 
+
+# Set working directory to the vsock device
+WORKDIR /build/vhost-device/vhost-device-vsock
+
+# Build and install the binary to /usr/bin
+RUN cargo install --path . --root /usr && \
+    strip /usr/bin/vhost-device-vsock
 
 # Final stage: copy artifacts to clean image
 FROM debian:bookworm-slim
@@ -30,5 +45,5 @@ COPY --from=kernels /usr/share/cartesi-machine/images/linux.bin /usr/share/carte
 COPY --from=kernels /usr/share/cartesi-machine/images/linux.bin.config /usr/share/cartesi-machine/images/linux.bin.config
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image /usr/share/qemu/images/linux-riscv64-Image
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image.config /usr/share/qemu/images/linux-riscv64-Image.config
-
+COPY --from=vhost /usr/bin/vhost-device-vsock /usr/bin/vhost-device-vsock
 CMD ["/bin/bash"] 
