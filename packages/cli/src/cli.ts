@@ -420,22 +420,28 @@ function generateDockerCompose(imageTag: string, profile: string, imageDigest?: 
       image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
-      networks: ['internal_net'],
+      networks: ['external_net'],
       volumes: [
         `${cacheDir}:/work`,
         `${pathHash}_vcr_shared_data:/media/vcr`
       ],
       command: [
-        'qemu-system-riscv64',
-        '--machine', 'virt',
-        '--kernel', '/work/vc.qemu-kernel',
-        '-nographic',
-        '-append', 'root=/dev/vda rootfstype=squashfs console=ttyS0',
-        '-drive', 'file=/work/vc.squashfs,format=raw,if=virtio',
-        '-netdev', 'user,id=net0,hostfwd=tcp::8080-:8080,hostfwd=tcp::8022-:8022',
-        '-device', 'virtio-net-pci,netdev=net0',
-        '-monitor', 'none',
-        '-serial', 'stdio'
+        '/bin/bash', '-c',
+        `vhost-device-vsock --guest-cid=4 --uds-path=/tmp/vh.sock --socket=/tmp/vhost.socket &
+sleep 1
+qemu-system-riscv64 \
+  --machine virt,memory-backend=mem0 \
+  --kernel /work/vc.qemu-kernel \
+  -nographic \
+  -object memory-backend-memfd,id=mem0,size=512M \
+  -append "root=/dev/vda rootfstype=squashfs console=ttyS0" \
+  -drive "file=/work/vc.squashfs,format=raw,if=virtio" \
+  -netdev "user,id=net0,hostfwd=tcp::8080-:8080,hostfwd=tcp::8022-:22" \
+  -device virtio-net-pci,netdev=net0 \
+  -chardev socket,id=c,path=/tmp/vhost.socket \
+  -device vhost-user-vsock-pci,chardev=c \
+  -monitor none \
+  -serial stdio`
       ],
       tty: true,
       stdin_open: true,
