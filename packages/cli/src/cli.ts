@@ -427,7 +427,7 @@ function generateDockerCompose(imageTag: string, profile: string, imageDigest?: 
       ],
       command: [
         '/bin/bash', '-c',
-        `vhost-device-vsock --guest-cid=4 --uds-path=/tmp/vh.sock --socket=/tmp/vhost.socket &
+        `vhost-device-vsock --guest-cid=4 --forward-cid=1 --forward-map=8080:8080,8022:22 --socket=/tmp/vhost.socket &
 sleep 1
 qemu-system-riscv64 \
   --machine virt,memory-backend=mem0 \
