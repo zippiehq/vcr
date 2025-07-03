@@ -61,16 +61,16 @@ jobs:
           cd packages/sample-python
           echo "Testing dev profile build..."
           node ../../packages/cli/dist/cli.js build --profile dev
-          node ../../packages/cli/dist/cli.js up --profile dev || node ../../packages/cli/dist/cli.js logs
+          node ../../packages/cli/dist/cli.js up --profile dev || node ../../packages/cli/dist/cli.js logs && false
           node ../../packages/cli/dist/cli.js down
           node ../../packages/cli/dist/cli.js prune
           echo "Testing test profile build..."
           node ../../packages/cli/dist/cli.js build --profile test
-          node ../../packages/cli/dist/cli.js up --profile test || node ../../packages/cli/dist/cli.js logs
+          node ../../packages/cli/dist/cli.js up --profile test || node ../../packages/cli/dist/cli.js logs && false
           node ../../packages/cli/dist/cli.js down
           node ../../packages/cli/dist/cli.js prune
           echo "Testing prod profile build..."
           node ../../packages/cli/dist/cli.js build --profile prod 
-          node ../../packages/cli/dist/cli.js up --profile prod || node ../../packages/cli/dist/cli.js logs
+          node ../../packages/cli/dist/cli.js up --profile prod || node ../../packages/cli/dist/cli.js logs && false
           node ../../packages/cli/dist/cli.js down
           node ../../packages/cli/dist/cli.js prune
