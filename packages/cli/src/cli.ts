@@ -420,15 +420,17 @@ function generateDockerCompose(imageTag: string, profile: string, imageDigest?: 
       image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
-      networks: ['external_net'],
+      networks: ['internal_net'],
       volumes: [
         `${cacheDir}:/work`,
         `${pathHash}_vcr_shared_data:/media/vcr`
       ],
       command: [
         '/bin/bash', '-c',
-        `vhost-device-vsock --guest-cid=4 --forward-cid=1 --forward-map=8080:8080,8022:22 --socket=/tmp/vhost.socket &
-sleep 1
+        `RUST_LOG='*' vhost-device-vsock --guest-cid=4 --forward-cid=1 --forward-listen=8080+8022 --socket=/tmp/vhost.socket --tx-buffer-size=65536 --queue-size=1024 &
+        socat tcp-listen:8080,fork VSOCK-CONNECT:1:8080 &
+        socat tcp-listen:8022,fork VSOCK-CONNECT:1:8022 &
+        sleep 1
 qemu-system-riscv64 \
   --machine virt,memory-backend=mem0 \
   --kernel /work/vc.qemu-kernel \
@@ -436,8 +438,6 @@ qemu-system-riscv64 \
   -object memory-backend-memfd,id=mem0,size=512M \
   -append "root=/dev/vda rootfstype=squashfs console=ttyS0" \
   -drive "file=/work/vc.squashfs,format=raw,if=virtio" \
-  -netdev "user,id=net0,hostfwd=tcp::8080-:8080,hostfwd=tcp::8022-:22" \
-  -device virtio-net-pci,netdev=net0 \
   -chardev socket,id=c,path=/tmp/vhost.socket \
   -device vhost-user-vsock-pci,chardev=c \
   -monitor none \
@@ -884,6 +884,9 @@ services:
     image: ghcr.io/zippiehq/vcr-linuxkit-sshd@sha256:448f0a6f0b30e7f6f4a28ab11268b07ed2fb81a4d4feb1092c0b16a126d33183
     binds.add:
       - /root/.ssh:/root/.ssh
+  - name: guest-agent
+    image: ghcr.io/zippiehq/vcr-guest-agent
+    net: host
   - name: app
     image: localhost:5001/${imageReference}
 ${netConfig}
