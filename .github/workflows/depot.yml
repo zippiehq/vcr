@@ -76,7 +76,7 @@ jobs:
         with:
           project: ${{ secrets.DEPOT_PROJECT_ID }}
           token: ${{ secrets.DEPOT_API_TOKEN }}
-          targets: vcr-kernels,snapshot-builder,linuxkit-builder
+          targets: vcr-kernels,snapshot-builder,linuxkit-builder,guest-agent
           files: |
             ./docker-bake.hcl
             ./docker-bake.platforms.hcl

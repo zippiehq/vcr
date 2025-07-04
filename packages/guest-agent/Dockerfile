@@ -51,6 +51,7 @@ RUN apk add --no-cache --initdb -p /out \
     alpine-baselayout \
     busybox \
     libgcc \
+    socat \
     musl
 
 # Remove apk residuals
@@ -62,4 +63,5 @@ CMD []
 WORKDIR /
 COPY --from=mirror /out/ /
 COPY --from=builder /app/target/riscv64gc-unknown-linux-musl/release/guest-agent /bin/guest-agent
-CMD ["/bin/guest-agent"] 
+COPY ./entrypoint.sh /entrypoint.sh
+CMD ["/entrypoint.sh"] 

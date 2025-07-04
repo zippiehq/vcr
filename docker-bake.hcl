@@ -15,11 +15,25 @@ target "docker-platforms-amd64-only" {
   ]
 }
 
+
+target "docker-platforms-riscv64-only" {
+  platforms = [
+    "linux/riscv64"
+  ]
+}
+
 target "vcr-kernels" {
   inherits = ["docker-metadata-action", "docker-platforms-amd64-only"]
   context = "./packages/vcr-kernels"
   dockerfile = "Dockerfile"
   tags = ["ghcr.io/zippiehq/vcr-kernels:latest"]
+}
+
+target "guest-agent" {
+  inherits = ["docker-metadata-action", "docker-platforms-riscv64-only"]
+  context = "./packages/guest-agent"
+  dockerfile = "Dockerfile"
+  tags = ["ghcr.io/zippiehq/vcr-guest-agent:latest"]
 }
 
 target "snapshot-builder" {
