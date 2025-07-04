@@ -430,7 +430,8 @@ function generateDockerCompose(imageTag: string, profile: string, imageDigest?: 
         `RUST_LOG='*' vhost-device-vsock --guest-cid=4 --forward-cid=1 --forward-listen=8080+8022 --socket=/tmp/vhost.socket --tx-buffer-size=65536 --queue-size=1024 &
         socat tcp-listen:8080,fork VSOCK-CONNECT:1:8080 &
         socat tcp-listen:8022,fork VSOCK-CONNECT:1:8022 &
-        sleep 1
+        sleep 4
+        ps ux
 qemu-system-riscv64 \
   --machine virt,memory-backend=mem0 \
   --kernel /work/vc.qemu-kernel \
