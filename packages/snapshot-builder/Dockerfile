@@ -30,7 +30,7 @@ RUN apt-get update && \
         wget \
         curl \
         openssh-client qemu-system-misc ipxe-qemu \
-        ca-certificates && \
+        ca-certificates socat && \
     rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /artifacts
