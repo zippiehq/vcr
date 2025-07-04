@@ -1,6 +1,6 @@
 {
   "name": "@zippie/vcr",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Verifiable Container Runner CLI",
   "bin": {
     "vcr": "dist/cli.js"
@@ -10,7 +10,7 @@
     "start": "node dist/cli.js"
   },
   "author": "Zippie",
-  "license": "MIT",
+  "license": "Unlicensed",
   "dependencies": {},
   "devDependencies": {
     "typescript": "^5.0.0",
