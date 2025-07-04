@@ -5,7 +5,10 @@ FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels:latest as kernels
 
 FROM rust:1.85.1 as vhost
 
+
 WORKDIR /build
+RUN git clone https://github.com/marlinprotocol/oyster-monorepo
+RUN cd oyster-monorepo/networking/tcp-proxy && cargo build --release && cd /build
 
 #RUN git clone --depth=1 -b feat/forward_map https://github.com/zippiehq/vhost-device.git && cd vhost-device && git checkout b2a3213e78b25d146f504f3fb79a6b2b67cf55f0
 RUN git clone --depth=1 https://github.com/rust-vmm/vhost-device
@@ -47,4 +50,7 @@ COPY --from=kernels /usr/share/cartesi-machine/images/linux.bin.config /usr/shar
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image /usr/share/qemu/images/linux-riscv64-Image
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image.config /usr/share/qemu/images/linux-riscv64-Image.config
 COPY --from=vhost /usr/bin/vhost-device-vsock /usr/bin/vhost-device-vsock
+COPY --from=vhost /build/oyster-monorepo/networking/tcp-proxy/target/release/vsock-to-ip /usr/bin/vsock-to-ip
+COPY --from=vhost /build/oyster-monorepo/networking/tcp-proxy/target/release/ip-to-vsock /usr/bin/ip-to-vsock
+
 CMD ["/bin/bash"] 
