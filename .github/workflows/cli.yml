@@ -57,6 +57,7 @@ jobs:
 
       - name: Test CLI build command
         run: |
+          sudo modprobe vsock_loopback
           # Test that the build command works for all profiles in a directory with a Dockerfile
           cd packages/sample-python
           echo "Testing dev profile build..."
