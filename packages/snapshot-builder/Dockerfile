@@ -10,8 +10,8 @@ WORKDIR /build
 RUN git clone https://github.com/marlinprotocol/oyster-monorepo
 RUN cd oyster-monorepo/networking/tcp-proxy && cargo build --release && cd /build
 
-#RUN git clone --depth=1 -b feat/forward_map https://github.com/zippiehq/vhost-device.git && cd vhost-device && git checkout b2a3213e78b25d146f504f3fb79a6b2b67cf55f0
-RUN git clone --depth=1 https://github.com/rust-vmm/vhost-device
+RUN git clone --depth=1 -b feat/forward_map https://github.com/zippiehq/vhost-device.git && cd vhost-device && git checkout d62abe3ce33ca7d5d40030f872696b4cfe033943
+#RUN git clone --depth=1 https://github.com/rust-vmm/vhost-device
 # Set working directory to the vsock device
 WORKDIR /build/vhost-device/vhost-device-vsock
 
