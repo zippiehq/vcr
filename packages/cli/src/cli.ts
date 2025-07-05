@@ -427,9 +427,10 @@ function generateDockerCompose(imageTag: string, profile: string, imageDigest?: 
       ],
       command: [
         '/bin/bash', '-c',
-        `RUST_LOG='trace' vhost-device-vsock --guest-cid=4 --forward-cid=1 --forward-listen=8080+8022 --socket=/tmp/vhost.socket --tx-buffer-size=65536 --queue-size=1024 &
+        `RUST_LOG=trace vhost-device-vsock --guest-cid=4 --forward-cid=1 --forward-listen=8080+8022 --socket=/tmp/vhost.socket --tx-buffer-size=65536 --queue-size=1024 &
         socat tcp-listen:8080,fork VSOCK-CONNECT:1:8080 &
         socat tcp-listen:8022,fork VSOCK-CONNECT:1:8022 &
+        socat -ddd - VSOCK-LISTEN:3213 < /dev/urandom &
         sleep 4
         ps ux
 qemu-system-riscv64 \
@@ -453,6 +454,7 @@ qemu-system-riscv64 \
         retries: 3,
         start_period: '40s'
       },
+      devices: [ "/dev/vsock"],
       labels: [
         'traefik.enable=true',
         'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
