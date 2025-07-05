@@ -1866,7 +1866,8 @@ function main() {
           
           if (isContainerToHost) {
             // Remove 'container:' prefix for the actual path
-            const containerPath = source.substring(9); // Remove 'container:' prefix
+            const containerPath = source.substring(10); // Remove 'container:' prefix (10 characters)
+            console.log(`DEBUG: source="${source}", containerPath="${containerPath}"`);
             
             if (profile === 'test' || profile === 'prod') {
               // Use SSH + containerd for test/prod profiles
@@ -1879,7 +1880,7 @@ function main() {
               console.log(`Copying container:${containerPath} to ${destination}`);
               // First copy from container to VM's /work directory, then to host
               const tempPath = `/work/temp_${Date.now()}`;
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp ${containerPath} ${tempPath}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp '${containerPath}' '${tempPath}'"`, { stdio: 'inherit' });
               execSync(`docker cp ${containerName}:${tempPath} "${destination}"`, { stdio: 'inherit' });
               execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
             } else {
@@ -1902,7 +1903,7 @@ function main() {
               // First copy to the VM's /work directory, then to container
               const tempPath = `/work/temp_${Date.now()}`;
               execSync(`docker cp "${source}" ${containerName}:${tempPath}`, { stdio: 'inherit' });
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp ${tempPath} ${destination}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp '${tempPath}' '${destination}'"`, { stdio: 'inherit' });
               execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
             } else {
               // Use Docker cp for dev profile
@@ -1912,7 +1913,7 @@ function main() {
             }
           } else if (isContainerToContainer) {
             // Container to container copy (within the container)
-            const containerDestPath = destination.substring(9); // Remove 'container:' prefix
+            const containerDestPath = destination.substring(10); // Remove 'container:' prefix (10 characters)
             
             if (profile === 'test' || profile === 'prod') {
               // Use SSH + containerd for test/prod profiles
@@ -1923,7 +1924,7 @@ function main() {
               
               console.log(`Detected ${profile} profile - copying files within container...`);
               console.log(`Copying ${source} to container:${containerDestPath}`);
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp ${source} ${containerDestPath}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp '${source}' '${containerDestPath}'"`, { stdio: 'inherit' });
             } else {
               // Use Docker exec for dev profile
               console.log('Detected dev profile - copying files within container...');
