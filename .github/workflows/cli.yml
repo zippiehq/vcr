@@ -59,6 +59,8 @@ jobs:
         run: |
           sudo modprobe vsock_loopback
           sudo modprobe vhost_vsock
+          uname -a
+          apt-get update && apt-get install socat && socat - VSOCK-LISTEN:4444 < /dev/urandom
           ls -al /dev
           # Test that the build command works for all profiles in a directory with a Dockerfile
           cd packages/sample-python
