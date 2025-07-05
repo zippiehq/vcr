@@ -701,7 +701,7 @@ Usage:
   vcr down                           Stop development environment
   vcr logs [-f|--follow] [--system]  View container or system logs
   vcr exec <command>                 Execute command in container
-  vcr shell                          Open shell in container
+  vcr shell [--system]               Open shell in container or system
   vcr cp <source> <destination>      Copy files to/from container
   vcr cat <file-path>                View file contents in container
   vcr prune [--local]                Clean up VCR environment (cache, registry, builder)
@@ -748,7 +748,8 @@ Examples:
   vcr logs --system -f                                 # Follow system logs in real-time
   vcr exec ls -la                                      # List files in container
   vcr exec cat /app/config.json                        # View file in container
-  vcr shell                                            # Open interactive shell
+  vcr shell                                            # Open shell in container
+  vcr shell --system                                   # Open shell in system (VM/container)
   vcr cp local-file.txt /app/remote-file.txt           # Copy file to container
   vcr cp /app/logs.txt ./local-logs.txt                # Copy file from container
   vcr cp ./config/ /app/config/                        # Copy directory to container
@@ -763,7 +764,8 @@ Notes:
   - Use 'vcr logs' to view container logs (no need to specify compose file path)
   - Use 'vcr logs --system' to view system logs (Docker container logs)
   - Use 'vcr exec' to run commands in the application container
-  - Use 'vcr shell' to get an interactive shell in the application container
+  - Use 'vcr shell' to get an interactive shell in the container
+  - Use 'vcr shell --system' to get an interactive shell in the system (VM/container)
   - Use 'vcr cp' to copy files to/from the application container
   - Use 'vcr cat' to quickly view file contents in the application container
   - Container paths should start with /app/ to avoid ambiguity
@@ -772,6 +774,9 @@ Notes:
   - Logs behavior varies by profile:
     * dev: vcr logs shows container logs, vcr logs --system shows all compose logs
     * test/prod: vcr logs shows /var/log/app.log via SSH, vcr logs --system shows container logs
+  - Shell behavior varies by profile:
+    * dev: vcr shell opens container shell, vcr shell --system opens container shell
+    * test/prod: vcr shell opens container via containerd, vcr shell --system opens VM shell
 
 Prerequisites:
   - Docker and buildx installed
@@ -1713,38 +1718,71 @@ function main() {
       try {
         const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
         if (existsSync(composePath)) {
+          // Parse shell arguments
+          const systemMode = args.includes('--system');
+          
           // Detect the profile by checking the container's image
           const { profile, sshKeyPath } = detectProfileAndSshKey();
           const pathHash = getPathHash();
           const containerName = `${pathHash}-vcr-isolated-service`;
           
-          if (profile === 'test' || profile === 'prod') {
-            // This is a test or prod profile - exec into container then SSH
-            console.log('Detected test/prod profile - connecting to RISC-V VM...');
-            console.log('Type "exit" to return to your host shell');
-            
-            if (!sshKeyPath) {
-              console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-              process.exit(1);
-            }
-            
-            // First exec into the container, then SSH from there
-            try {
-              execSync(`docker exec -it ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost`, { stdio: 'inherit' });
-            } catch (sshErr) {
-              // SSH connection closure is normal, don't treat as error
-              if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
-                // Exit with the same status code but don't print error
-                process.exit(sshErr.status);
+          if (systemMode) {
+            // System mode - behave like the old behavior
+            if (profile === 'test' || profile === 'prod') {
+              // This is a test or prod profile - exec into container then SSH
+              console.log('Detected test/prod profile (system mode) - connecting to RISC-V VM...');
+              console.log('Type "exit" to return to your host shell');
+              
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
               }
-              // For other errors, still exit gracefully
-              process.exit(0);
+              
+              // First exec into the container, then SSH from there
+              try {
+                execSync(`docker exec -it ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost`, { stdio: 'inherit' });
+              } catch (sshErr) {
+                // SSH connection closure is normal, don't treat as error
+                if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                  // Exit with the same status code but don't print error
+                  process.exit(sshErr.status);
+                }
+                // For other errors, still exit gracefully
+                process.exit(0);
+              }
+            } else {
+              // This is a dev profile - use Docker exec
+              console.log('Detected dev profile (system mode) - opening shell in container...');
+              console.log('Type "exit" to return to your host shell');
+              execSync(`docker compose -f ${composePath} exec isolated_service /bin/sh`, { stdio: 'inherit' });
             }
           } else {
-            // This is a dev profile - use Docker exec
-            console.log('Detected dev profile - opening shell in container...');
-            console.log('Type "exit" to return to your host shell');
-            execSync(`docker compose -f ${composePath} exec isolated_service /bin/sh`, { stdio: 'inherit' });
+            // Application mode
+            if (profile === 'test' || profile === 'prod') {
+              // Use SSH to exec into the container via containerd
+              console.log('Detected test/prod profile - connecting to container...');
+              console.log('Type "exit" to return to your host shell');
+              
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
+              }
+              
+              try {
+                execSync(`docker exec -it ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app /bin/sh"`, { stdio: 'inherit' });
+              } catch (sshErr) {
+                // SSH command execution errors should be treated as command errors
+                if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                  process.exit(sshErr.status);
+                }
+                process.exit(1);
+              }
+            } else {
+              // This is a dev profile - use Docker exec (already enters container)
+              console.log('Detected dev profile - opening shell in container...');
+              console.log('Type "exit" to return to your host shell');
+              execSync(`docker compose -f ${composePath} exec isolated_service /bin/sh`, { stdio: 'inherit' });
+            }
           }
         } else {
           console.log('ℹ️  No docker-compose.dev.json found for current directory');
