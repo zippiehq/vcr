@@ -680,8 +680,9 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     console.log('- Function endpoint: http://localhost:8080/function');
     console.log('- Health check: http://localhost:8080/function/health');
     console.log('- To stop: vcr down');
-    console.log('- To view logs: vcr logs');
-    console.log('- To follow logs: vcr logs -f');
+    console.log('- To view container logs: vcr logs');
+    console.log('- To follow container logs: vcr logs -f');
+    console.log('- To view system logs: vcr logs --system');
     
   } catch (err) {
     console.error('Error starting development environment:', err);
@@ -698,7 +699,7 @@ Usage:
   vcr build [-t <name:tag>] [options]  Build and push container images
   vcr up [-t <name:tag>] [options]    Build and run development environment with isolated networking
   vcr down                           Stop development environment
-  vcr logs [-f|--follow]             View development environment logs
+  vcr logs [-f|--follow] [--system]  View container or system logs
   vcr exec <command>                 Execute command in container
   vcr shell                          Open shell in container
   vcr cp <source> <destination>      Copy files to/from container
@@ -741,8 +742,10 @@ Examples:
   vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
   vcr up --restart                                   # Force restart containers
   vcr down                                             # Stop development environment
-  vcr logs                                             # View logs
-  vcr logs -f                                          # Follow logs in real-time
+  vcr logs                                             # View container logs
+  vcr logs -f                                          # Follow container logs in real-time
+  vcr logs --system                                    # View system logs (Docker container logs)
+  vcr logs --system -f                                 # Follow system logs in real-time
   vcr exec ls -la                                      # List files in container
   vcr exec cat /app/config.json                        # View file in container
   vcr shell                                            # Open interactive shell
@@ -757,7 +760,8 @@ Examples:
 Notes:
   - Docker Compose files are stored in ~/.cache/vcr/<path-hash>/ for each project directory
   - Use 'vcr down' to stop the environment (no need to specify compose file path)
-  - Use 'vcr logs' to view logs (no need to specify compose file path)
+  - Use 'vcr logs' to view container logs (no need to specify compose file path)
+  - Use 'vcr logs --system' to view system logs (Docker container logs)
   - Use 'vcr exec' to run commands in the application container
   - Use 'vcr shell' to get an interactive shell in the application container
   - Use 'vcr cp' to copy files to/from the application container
@@ -765,6 +769,9 @@ Notes:
   - Container paths should start with /app/ to avoid ambiguity
   - Default image tags are based on the current directory path hash
   - vcr up automatically detects image changes and restarts containers when needed
+  - Logs behavior varies by profile:
+    * dev: vcr logs shows container logs, vcr logs --system shows all compose logs
+    * test/prod: vcr logs shows /var/log/app.log via SSH, vcr logs --system shows container logs
 
 Prerequisites:
   - Docker and buildx installed
@@ -1419,7 +1426,7 @@ function createProject(targetDir: string, template: string) {
     console.log('  vcr build    # Build the container');
     console.log('  vcr up       # Build and run the development environment');
     console.log('  vcr down     # Stop the development environment');
-    console.log('  vcr logs     # View logs');
+    console.log('  vcr logs     # View container logs');
     console.log('  vcr shell    # Open shell in the container');
     
   } catch (err) {
@@ -1593,10 +1600,50 @@ function main() {
       try {
         const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
         if (existsSync(composePath)) {
-          // Check if -f flag is provided for follow mode
+          // Parse logs arguments
           const followMode = args.includes('-f') || args.includes('--follow');
-          const followFlag = followMode ? ' -f' : '';
-          execSync(`docker compose -f ${composePath} logs${followFlag}`, { stdio: 'inherit' });
+          const systemMode = args.includes('--system');
+          
+          const { profile, sshKeyPath } = detectProfileAndSshKey();
+          const pathHash = getPathHash();
+          const containerName = `${pathHash}-vcr-isolated-service`;
+          
+          if (systemMode) {
+            // System logs - show Docker container logs
+            if (profile === 'test' || profile === 'prod') {
+              // Show logs of the vcr-isolated-service container for test/prod
+              const followFlag = followMode ? ' -f' : '';
+              execSync(`docker logs${followFlag} ${containerName}`, { stdio: 'inherit' });
+            } else {
+              // Show Docker Compose logs for dev
+              const followFlag = followMode ? ' -f' : '';
+              execSync(`docker compose -f ${composePath} logs${followFlag}`, { stdio: 'inherit' });
+            }
+          } else {
+            // Application logs
+            if (profile === 'test' || profile === 'prod') {
+              // Use SSH to cat/tail /var/log/app.log for test/prod profiles
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
+              }
+              
+              const logCommand = followMode ? 'tail -f /var/log/app.log' : 'cat /var/log/app.log';
+              try {
+                execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "${logCommand}"`, { stdio: 'inherit' });
+              } catch (sshErr) {
+                // SSH command execution errors should be treated as command errors
+                if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                  process.exit(sshErr.status);
+                }
+                process.exit(1);
+              }
+            } else {
+              // Show logs of just the app container for dev profile
+              const followFlag = followMode ? ' -f' : '';
+              execSync(`docker compose -f ${composePath} logs${followFlag} isolated_service`, { stdio: 'inherit' });
+            }
+          }
         } else {
           console.log('ℹ️  No docker-compose.dev.json found for current directory');
           console.log('Run "vcr up" first to start the development environment');
