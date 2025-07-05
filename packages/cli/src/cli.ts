@@ -786,6 +786,9 @@ Notes:
   - Copy behavior varies by profile:
     * dev: vcr cp uses Docker cp for host<->container, Docker exec for container<->container
     * test/prod: vcr cp uses SSH + containerd for all operations
+  - Cat behavior varies by profile:
+    * dev: vcr cat uses Docker exec to view files in container
+    * test/prod: vcr cat uses SSH + containerd to view files in container
 
 Prerequisites:
   - Docker and buildx installed
@@ -1965,15 +1968,15 @@ function main() {
           const containerName = `${pathHash}-vcr-isolated-service`;
           
           if (profile === 'test' || profile === 'prod') {
-            // Use SSH for test/prod profiles
+            // Use SSH + containerd for test/prod profiles
             if (!sshKeyPath) {
               console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
               process.exit(1);
             }
             
-            console.log(`Detected ${profile} profile - viewing file via SSH...`);
+            console.log(`Detected ${profile} profile - viewing file in container...`);
             try {
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cat ${filePath}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cat ${filePath}"`, { stdio: 'inherit' });
             } catch (sshErr) {
               // SSH command execution errors should be treated as command errors
               if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
