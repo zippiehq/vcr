@@ -754,6 +754,7 @@ Examples:
   vcr cp local-file.txt /app/remote-file.txt           # Copy file to container
   vcr cp /app/logs.txt ./local-logs.txt                # Copy file from container
   vcr cp ./config/ /app/config/                        # Copy directory to container
+  vcr cp /app/file1.txt /app/file2.txt                 # Copy file within container
   vcr cat /app/config.json                             # View file in container
   vcr cat /app/logs/app.log                            # View log file
   vcr prune                                            # Clean up entire VCR environment
@@ -782,6 +783,9 @@ Notes:
   - Exec behavior varies by profile:
     * dev: vcr exec runs in container, vcr exec --system runs in container
     * test/prod: vcr exec runs in container via containerd, vcr exec --system runs in VM
+  - Copy behavior varies by profile:
+    * dev: vcr cp uses Docker cp for host<->container, Docker exec for container<->container
+    * test/prod: vcr cp uses SSH + containerd for all operations
 
 Prerequisites:
   - Docker and buildx installed
@@ -1843,6 +1847,7 @@ function main() {
             console.log('  vcr cp local-file.txt /app/remote-file.txt');
             console.log('  vcr cp container:/app/logs.txt ./local-logs.txt');
             console.log('  vcr cp ./config/ /app/config/');
+            console.log('  vcr cp /app/file1.txt /app/file2.txt');
             process.exit(1);
           }
           
@@ -1851,55 +1856,76 @@ function main() {
           const pathHash = getPathHash();
           const containerName = `${pathHash}-vcr-isolated-service`;
           
-          // Determine if it's host->container or container->host
+          // Determine if it's host->container, container->host, or container->container
           const isContainerToHost = source.startsWith('container:');
-          const isHostToContainer = !isContainerToHost;
+          const isHostToContainer = !isContainerToHost && !destination.startsWith('container:');
+          const isContainerToContainer = !isContainerToHost && destination.startsWith('container:');
           
           if (isContainerToHost) {
             // Remove 'container:' prefix for the actual path
             const containerPath = source.substring(9); // Remove 'container:' prefix
             
             if (profile === 'test' || profile === 'prod') {
-              // Use SSH for test/prod profiles
+              // Use SSH + containerd for test/prod profiles
               if (!sshKeyPath) {
                 console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
                 process.exit(1);
               }
               
-              console.log(`Detected ${profile} profile - copying files via SSH...`);
+              console.log(`Detected ${profile} profile - copying files from container...`);
               console.log(`Copying container:${containerPath} to ${destination}`);
-              // First copy from VM to container's /work directory, then to host
+              // First copy from container to VM's /work directory, then to host
               const tempPath = `/work/temp_${Date.now()}`;
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cp ${containerPath} ${tempPath}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cp ${containerPath} ${tempPath}"`, { stdio: 'inherit' });
               execSync(`docker cp ${containerName}:${tempPath} "${destination}"`, { stdio: 'inherit' });
               execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
             } else {
               // Use Docker cp for dev profile
-              console.log('Detected dev profile - copying files in container...');
+              console.log('Detected dev profile - copying files from container...');
               console.log(`Copying container:${containerPath} to ${destination}`);
               execSync(`docker cp ${containerName}:${containerPath} "${destination}"`, { stdio: 'inherit' });
             }
-          } else {
+          } else if (isHostToContainer) {
             // Host to container copy
             if (profile === 'test' || profile === 'prod') {
-              // Use SSH for test/prod profiles
+              // Use SSH + containerd for test/prod profiles
               if (!sshKeyPath) {
                 console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
                 process.exit(1);
               }
               
-              console.log(`Detected ${profile} profile - copying files via SSH...`);
+              console.log(`Detected ${profile} profile - copying files to container...`);
               console.log(`Copying ${source} to container:${destination}`);
-              // First copy to the container's /work directory, then move to destination
+              // First copy to the VM's /work directory, then to container
               const tempPath = `/work/temp_${Date.now()}`;
               execSync(`docker cp "${source}" ${containerName}:${tempPath}`, { stdio: 'inherit' });
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "cp ${tempPath} ${destination}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cp ${tempPath} ${destination}"`, { stdio: 'inherit' });
               execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
             } else {
               // Use Docker cp for dev profile
-              console.log('Detected dev profile - copying files in container...');
+              console.log('Detected dev profile - copying files to container...');
               console.log(`Copying ${source} to container:${destination}`);
               execSync(`docker cp "${source}" ${containerName}:${destination}`, { stdio: 'inherit' });
+            }
+          } else if (isContainerToContainer) {
+            // Container to container copy (within the container)
+            const containerDestPath = destination.substring(9); // Remove 'container:' prefix
+            
+            if (profile === 'test' || profile === 'prod') {
+              // Use SSH + containerd for test/prod profiles
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
+              }
+              
+              console.log(`Detected ${profile} profile - copying files within container...`);
+              console.log(`Copying ${source} to container:${containerDestPath}`);
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cp ${source} ${containerDestPath}"`, { stdio: 'inherit' });
+            } else {
+              // Use Docker exec for dev profile
+              console.log('Detected dev profile - copying files within container...');
+              console.log(`Copying ${source} to container:${containerDestPath}`);
+              execSync(`docker compose -f ${composePath} exec isolated_service cp ${source} ${containerDestPath}`, { stdio: 'inherit' });
             }
           }
         } else {
