@@ -1728,7 +1728,7 @@ function main() {
               
               console.log(`Detected ${profile} profile - executing command in container...`);
               try {
-                execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app ${command}"`, { stdio: 'inherit' });
+                execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app ${command}"`, { stdio: 'inherit' });
               } catch (sshErr) {
                 // SSH command execution errors should be treated as command errors
                 if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
@@ -1784,7 +1784,7 @@ function main() {
               
               // First exec into the container, then SSH from there
               try {
-                execSync(`docker exec -it ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost`, { stdio: 'inherit' });
+                execSync(`docker exec -it ${containerName} ssh -t -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost`, { stdio: 'inherit' });
               } catch (sshErr) {
                 // SSH connection closure is normal, don't treat as error
                 if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
@@ -1813,7 +1813,7 @@ function main() {
               }
               
               try {
-                execSync(`docker exec -it ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app /bin/sh"`, { stdio: 'inherit' });
+                execSync(`docker exec -it ${containerName} ssh -t -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug --tty app /bin/sh"`, { stdio: 'inherit' });
               } catch (sshErr) {
                 // SSH command execution errors should be treated as command errors
                 if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
@@ -1879,7 +1879,7 @@ function main() {
               console.log(`Copying container:${containerPath} to ${destination}`);
               // First copy from container to VM's /work directory, then to host
               const tempPath = `/work/temp_${Date.now()}`;
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cp ${containerPath} ${tempPath}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp ${containerPath} ${tempPath}"`, { stdio: 'inherit' });
               execSync(`docker cp ${containerName}:${tempPath} "${destination}"`, { stdio: 'inherit' });
               execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
             } else {
@@ -1902,7 +1902,7 @@ function main() {
               // First copy to the VM's /work directory, then to container
               const tempPath = `/work/temp_${Date.now()}`;
               execSync(`docker cp "${source}" ${containerName}:${tempPath}`, { stdio: 'inherit' });
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cp ${tempPath} ${destination}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp ${tempPath} ${destination}"`, { stdio: 'inherit' });
               execSync(`docker exec ${containerName} rm ${tempPath}`, { stdio: 'ignore' });
             } else {
               // Use Docker cp for dev profile
@@ -1923,7 +1923,7 @@ function main() {
               
               console.log(`Detected ${profile} profile - copying files within container...`);
               console.log(`Copying ${source} to container:${containerDestPath}`);
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cp ${source} ${containerDestPath}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cp ${source} ${containerDestPath}"`, { stdio: 'inherit' });
             } else {
               // Use Docker exec for dev profile
               console.log('Detected dev profile - copying files within container...');
@@ -1976,7 +1976,7 @@ function main() {
             
             console.log(`Detected ${profile} profile - viewing file in container...`);
             try {
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app cat ${filePath}"`, { stdio: 'inherit' });
+              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug app cat ${filePath}"`, { stdio: 'inherit' });
             } catch (sshErr) {
               // SSH command execution errors should be treated as command errors
               if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
