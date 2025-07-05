@@ -456,6 +456,7 @@ qemu-system-riscv64 \
         start_period: '40s'
       },
       devices: [ "/dev/vsock"],
+      privileged: true,
       labels: [
         'traefik.enable=true',
         'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
