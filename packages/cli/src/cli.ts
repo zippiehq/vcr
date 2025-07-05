@@ -431,6 +431,7 @@ function generateDockerCompose(imageTag: string, profile: string, imageDigest?: 
         socat tcp-listen:8080,fork VSOCK-CONNECT:1:8080 &
         socat tcp-listen:8022,fork VSOCK-CONNECT:1:8022 &
         socat -ddd - VSOCK-LISTEN:3213 < /dev/urandom &
+        ls -al /dev
         sleep 4
         ps ux
 qemu-system-riscv64 \
