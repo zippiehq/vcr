@@ -700,7 +700,7 @@ Usage:
   vcr up [-t <name:tag>] [options]    Build and run development environment with isolated networking
   vcr down                           Stop development environment
   vcr logs [-f|--follow] [--system]  View container or system logs
-  vcr exec <command>                 Execute command in container
+  vcr exec [--system] <command>      Execute command in container or system
   vcr shell [--system]               Open shell in container or system
   vcr cp <source> <destination>      Copy files to/from container
   vcr cat <file-path>                View file contents in container
@@ -746,8 +746,9 @@ Examples:
   vcr logs -f                                          # Follow container logs in real-time
   vcr logs --system                                    # View system logs (Docker container logs)
   vcr logs --system -f                                 # Follow system logs in real-time
-  vcr exec ls -la                                      # List files in container
+  vcr exec ls -la                                      # Execute command in container
   vcr exec cat /app/config.json                        # View file in container
+  vcr exec --system ps aux                             # Execute command in system (VM/container)
   vcr shell                                            # Open shell in container
   vcr shell --system                                   # Open shell in system (VM/container)
   vcr cp local-file.txt /app/remote-file.txt           # Copy file to container
@@ -763,7 +764,8 @@ Notes:
   - Use 'vcr down' to stop the environment (no need to specify compose file path)
   - Use 'vcr logs' to view container logs (no need to specify compose file path)
   - Use 'vcr logs --system' to view system logs (Docker container logs)
-  - Use 'vcr exec' to run commands in the application container
+  - Use 'vcr exec' to run commands in the container
+  - Use 'vcr exec --system' to run commands in the system (VM/container)
   - Use 'vcr shell' to get an interactive shell in the container
   - Use 'vcr shell --system' to get an interactive shell in the system (VM/container)
   - Use 'vcr cp' to copy files to/from the application container
@@ -777,6 +779,9 @@ Notes:
   - Shell behavior varies by profile:
     * dev: vcr shell opens container shell, vcr shell --system opens container shell
     * test/prod: vcr shell opens container via containerd, vcr shell --system opens VM shell
+  - Exec behavior varies by profile:
+    * dev: vcr exec runs in container, vcr exec --system runs in container
+    * test/prod: vcr exec runs in container via containerd, vcr exec --system runs in VM
 
 Prerequisites:
   - Docker and buildx installed
@@ -1663,11 +1668,15 @@ function main() {
       try {
         const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
         if (existsSync(composePath)) {
-          // Get the command to execute (everything after 'exec')
-          const execArgs = args.slice(1);
+          // Parse exec arguments
+          const systemMode = args.includes('--system');
+          
+          // Get the command to execute (everything after 'exec', excluding --system)
+          const execArgs = args.slice(1).filter(arg => arg !== '--system');
           if (execArgs.length === 0) {
             console.error('Error: vcr exec requires a command to execute');
             console.log('Example: vcr exec ls -la');
+            console.log('Example: vcr exec --system ps aux');
             process.exit(1);
           }
           
@@ -1676,28 +1685,56 @@ function main() {
           const pathHash = getPathHash();
           const containerName = `${pathHash}-vcr-isolated-service`;
           
-          if (profile === 'test' || profile === 'prod') {
-            // Use SSH for test/prod profiles
-            if (!sshKeyPath) {
-              console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-              process.exit(1);
-            }
-            
-            console.log(`Detected ${profile} profile - executing command via SSH...`);
-            try {
-              execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "${command}"`, { stdio: 'inherit' });
-            } catch (sshErr) {
-              // SSH command execution errors should be treated as command errors
-              if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
-                process.exit(sshErr.status);
+          if (systemMode) {
+            // System mode - behave like the old behavior
+            if (profile === 'test' || profile === 'prod') {
+              // Use SSH for test/prod profiles (exec in VM)
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
               }
-              process.exit(1);
+              
+              console.log(`Detected ${profile} profile (system mode) - executing command in VM...`);
+              try {
+                execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "${command}"`, { stdio: 'inherit' });
+              } catch (sshErr) {
+                // SSH command execution errors should be treated as command errors
+                if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                  process.exit(sshErr.status);
+                }
+                process.exit(1);
+              }
+            } else {
+              // Use Docker exec for dev profile (system mode)
+              console.log('Detected dev profile (system mode) - executing command in container...');
+              const result = execSync(`docker compose -f ${composePath} exec isolated_service ${command}`, { stdio: 'inherit' });
+              return result;
             }
           } else {
-            // Use Docker exec for dev profile
-            console.log('Detected dev profile - executing command in container...');
-            const result = execSync(`docker compose -f ${composePath} exec isolated_service ${command}`, { stdio: 'inherit' });
-            return result;
+            // Container mode
+            if (profile === 'test' || profile === 'prod') {
+              // Use SSH + containerd to exec into the container
+              if (!sshKeyPath) {
+                console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
+                process.exit(1);
+              }
+              
+              console.log(`Detected ${profile} profile - executing command in container...`);
+              try {
+                execSync(`docker exec ${containerName} ssh -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug -t app ${command}"`, { stdio: 'inherit' });
+              } catch (sshErr) {
+                // SSH command execution errors should be treated as command errors
+                if (sshErr && typeof sshErr === 'object' && 'status' in sshErr && typeof sshErr.status === 'number') {
+                  process.exit(sshErr.status);
+                }
+                process.exit(1);
+              }
+            } else {
+              // Use Docker exec for dev profile (already in container)
+              console.log('Detected dev profile - executing command in container...');
+              const result = execSync(`docker compose -f ${composePath} exec isolated_service ${command}`, { stdio: 'inherit' });
+              return result;
+            }
           }
         } else {
           console.log('ℹ️  No docker-compose.dev.json found for current directory');
