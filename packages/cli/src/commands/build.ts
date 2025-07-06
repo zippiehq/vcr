@@ -301,7 +301,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         '-w', '/cache',
         'ghcr.io/zippiehq/vcr-snapshot-builder',
         'bash', '-c',
-        'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX -reproducible < /cache/vc.tar && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
+        'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX -reproducible < /cache/vc.tar > /dev/null 2>&1 && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
       ];
       
       console.log(`Executing: ${snapshotCommand.join(' ')}`);
@@ -311,7 +311,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         console.error('Command failed with output:');
         if (result.stdout) console.error('stdout:', result.stdout.toString());
         if (result.stderr) console.error('stderr:', result.stderr.toString());
-        throw new Error(`Command failed with status ${result.status}`);
+        throw new Error(`Command failed with status ${result.status || 'null (process killed)'}`);
       }
       
       console.log('✅ Squashfs created successfully');
@@ -398,7 +398,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          'rm -f /cache/vc-cm-snapshot.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible'
+          'rm -f /cache/vc-cm-snapshot.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible > /dev/null 2>&1'
         ];
         
         console.log(`Executing: ${compressCommand.join(' ')}`);
@@ -408,7 +408,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           console.error('Compression command failed with output:');
           if (compressResult.stdout) console.error('stdout:', compressResult.stdout.toString());
           if (compressResult.stderr) console.error('stderr:', compressResult.stderr.toString());
-          throw new Error(`Compression command failed with status ${compressResult.status}`);
+          throw new Error(`Compression command failed with status ${compressResult.status || 'null (process killed)'}`);
         }
         
         console.log('✅ Compressed Cartesi machine snapshot created successfully');
