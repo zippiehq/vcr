@@ -7,7 +7,7 @@ import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { handleBuildCommand, handleUpCommand } from './commands/build';
 
-function checkDockerAvailable() {
+export function checkDockerAvailable() {
   try {
     execSync('docker --version', { stdio: 'ignore' });
   } catch (err) {
@@ -46,7 +46,7 @@ function checkVsockSupport() {
   }
 }
 
-function checkBuildxAvailable() {
+export function checkBuildxAvailable() {
   try {
     execSync('docker buildx version', { stdio: 'ignore' });
   } catch (err) {
@@ -55,7 +55,7 @@ function checkBuildxAvailable() {
   }
 }
 
-function checkVcrBuilder() {
+export function checkVcrBuilder() {
   try {
     execSync('docker buildx inspect vcr-builder', { stdio: 'ignore' });
     
@@ -106,7 +106,7 @@ function checkVcrBuilder() {
   }
 }
 
-function checkLocalRegistry() {
+export function checkLocalRegistry() {
   try {
     const registryRunning = execSync('docker ps --filter "name=vcr-registry" --format "{{.Names}}"', { encoding: 'utf8' }).trim();
     if (registryRunning) {
@@ -261,7 +261,7 @@ function getRegistryUrl(context: 'host' | 'docker' = 'docker'): string {
   return context === 'host' ? 'localhost:5001' : 'vcr-registry:5000';
 }
 
-function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false): string | undefined {
+export function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
@@ -366,12 +366,12 @@ function buildDevContainer() {
   }
 }
 
-function getPathHash(): string {
+export function getPathHash(): string {
   const currentPath = cwd();
   return createHash('sha256').update(currentPath).digest('hex').substring(0, 8);
 }
 
-function getComposeCacheDirectory(): string {
+export function getComposeCacheDirectory(): string {
   const pathHash = getPathHash();
   const composeCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
   
@@ -618,7 +618,7 @@ qemu-system-riscv64 \
   return composePath;
 }
 
-function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false) {
+export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false) {
   console.log('Starting development environment...');
   
   try {
@@ -821,7 +821,7 @@ Prerequisites:
 `);
 }
 
-function checkRiscv64Support() {
+export function checkRiscv64Support() {
   try {
     // Try to run hello-world RISC-V 64-bit image
     execSync('docker run --rm --platform linux/riscv64 hello-world:latest', { stdio: 'pipe' });

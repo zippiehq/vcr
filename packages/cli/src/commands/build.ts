@@ -3,14 +3,16 @@ import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
 
 // Import functions from the main CLI file
-declare function checkBuildxAvailable(): void;
-declare function checkVcrBuilder(): void;
-declare function checkLocalRegistry(): void;
-declare function checkRiscv64Support(): void;
-declare function getPathHash(): string;
-declare function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild?: boolean): string | undefined;
-declare function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild?: boolean, forceRestart?: boolean): void;
-declare function getComposeCacheDirectory(): string;
+import { 
+  checkBuildxAvailable, 
+  checkVcrBuilder, 
+  checkLocalRegistry, 
+  checkRiscv64Support, 
+  getPathHash, 
+  buildImage, 
+  runDevEnvironment, 
+  getComposeCacheDirectory 
+} from '../cli';
 
 export function handleBuildCommand(args: string[]): void {
   checkBuildxAvailable();
