@@ -7,63 +7,9 @@ import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { handleBuildCommand, handleUpCommand } from './commands/build';
 import { handleLogsCommand, handleExecCommand, handleShellCommand, handleCatCommand } from './commands/container';
+import { pruneVcrLocal, pruneVcr } from './commands/prune';
 import { generateLinuxKitYaml, generateDockerCompose } from './generate';
-import { checkDockerAvailable, checkBuildxAvailable, checkVcrBuilder, checkLocalRegistry, checkRiscv64Support } from './checks';
-
-function checkVsockSupport() {
-  console.log('Checking for vsock support...');
-  try {
-    // Run a privileged container to check for /dev/vsock
-    const result = execSync('docker run --rm --privileged alpine:latest ls -la /dev/vsock', { 
-      encoding: 'utf8',
-      stdio: 'pipe'
-    });
-    
-    if (result.includes('/dev/vsock')) {
-      console.log('✅ vsock support detected');
-      return true;
-    } else {
-      console.error('❌ Error: /dev/vsock not found in privileged container');
-      console.error('vsock support is required for VCR to function properly.');
-      console.error('Please ensure your system supports vsock or install the necessary kernel modules.');
-      process.exit(1);
-    }
-  } catch (err) {
-    console.error('❌ Error: Failed to check vsock support');
-    console.error('vsock support is required for VCR to function properly.');
-    console.error('Please ensure your system supports vsock or install the necessary kernel modules.');
-    console.error('');
-    console.error('You can try installing vsock support with:');
-    console.error('  sudo modprobe vsock_loopback');
-    console.error('  sudo modprobe vhost_vsock');
-    process.exit(1);
-  }
-}
-
-function buildDevContainer() {
-  const currentDir = cwd();
-  console.log('Building development container...');
-  
-  try {
-    // Check if Dockerfile exists
-    if (!existsSync(join(currentDir, 'Dockerfile'))) {
-      console.error('Error: No Dockerfile found in current directory');
-      process.exit(1);
-    }
-    
-    const imageName = 'vcr-dev-local';
-    const buildCommand = `docker build -t ${imageName} .`;
-    
-    console.log(`Building image: ${imageName}`);
-    console.log(`Executing: ${buildCommand}`);
-    execSync(buildCommand, { stdio: 'inherit', cwd: currentDir });
-    
-    return imageName;
-  } catch (err) {
-    console.error('Error building development container:', err);
-    process.exit(1);
-  }
-}
+import { checkDockerAvailable, checkBuildxAvailable, checkVcrBuilder, checkLocalRegistry, checkRiscv64Support, checkVsockSupport } from './checks';
 
 export function getPathHash(): string {
   const currentPath = cwd();
@@ -250,113 +196,7 @@ insecure = true
   }
 }
 
-function pruneVcrLocal() {
-  console.log('🧹 Pruning local VCR environment...');
-  
-  try {
-    // Stop development environment first
-    console.log('Stopping development environment...');
-    try {
-      const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
-      if (existsSync(composePath)) {
-        execSync(`docker compose -f ${composePath} down`, { stdio: 'ignore' });
-        console.log('✅ Development environment stopped');
-      } else {
-        console.log('ℹ️  No development environment to stop');
-      }
-    } catch (err) {
-      console.log('ℹ️  Could not stop development environment');
-    }
-    
-    // Wipe only the current project's cache directory
-    console.log('Wiping local cache directory...');
-    const localCacheDir = getComposeCacheDirectory();
-    if (existsSync(localCacheDir)) {
-      try {
-        execSync(`rm -rf "${localCacheDir}"`, { stdio: 'ignore' });
-        console.log('✅ Local cache directory wiped');
-      } catch (err) {
-        console.error('⚠️  Could not wipe local cache directory:', err);
-      }
-    } else {
-      console.log('ℹ️  Local cache directory does not exist');
-    }
-    
-    console.log('✅ Local VCR environment pruned successfully');
-    
-  } catch (err) {
-    console.error('Error pruning local VCR environment:', err);
-    process.exit(1);
-  }
-}
 
-function pruneVcr() {
-  console.log('🧹 Pruning VCR environment...');
-  
-  try {
-    // Stop development environment first
-    console.log('Stopping development environment...');
-    try {
-      const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
-      if (existsSync(composePath)) {
-        execSync(`docker compose -f ${composePath} down`, { stdio: 'ignore' });
-        console.log('✅ Development environment stopped');
-      } else {
-        console.log('ℹ️  No development environment to stop');
-      }
-    } catch (err) {
-      console.log('ℹ️  Could not stop development environment');
-    }
-    
-    // Stop and remove vcr-registry
-    console.log('Stopping vcr-registry...');
-    try {
-      execSync('docker stop vcr-registry', { stdio: 'ignore' });
-      execSync('docker rm vcr-registry', { stdio: 'ignore' });
-      console.log('✅ vcr-registry stopped and removed');
-    } catch (err) {
-      console.log('ℹ️  vcr-registry not running or already removed');
-    }
-    
-    // Remove vcr-builder
-    console.log('Removing vcr-builder...');
-    try {
-      execSync('docker buildx rm vcr-builder', { stdio: 'ignore' });
-      console.log('✅ vcr-builder removed');
-    } catch (err) {
-      console.log('ℹ️  vcr-builder not found or already removed');
-    }
-    
-    // Remove vcr-network
-    console.log('Removing vcr-network...');
-    try {
-      execSync('docker network rm vcr-network', { stdio: 'ignore' });
-      console.log('✅ vcr-network removed');
-    } catch (err) {
-      console.log('ℹ️  vcr-network not found or already removed');
-    }
-    
-    // Wipe cache directory
-    console.log('Wiping cache directory...');
-    const cacheDir = join(homedir(), '.cache', 'vcr');
-    if (existsSync(cacheDir)) {
-      try {
-        execSync(`rm -rf "${cacheDir}"`, { stdio: 'ignore' });
-        console.log('✅ Cache directory wiped');
-      } catch (err) {
-        console.error('⚠️  Could not wipe cache directory:', err);
-      }
-    } else {
-      console.log('ℹ️  Cache directory does not exist');
-    }
-    
-    console.log('✅ VCR environment pruned successfully');
-    
-  } catch (err) {
-    console.error('Error pruning VCR environment:', err);
-    process.exit(1);
-  }
-}
 
 function createProject(targetDir: string, template: string) {
   console.log(`Creating new VCR project: ${targetDir}`);
