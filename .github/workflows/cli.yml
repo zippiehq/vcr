@@ -106,7 +106,7 @@ jobs:
             # Test cat command
             echo "Testing cat command..."
             node ../../packages/cli/dist/cli.js exec "echo 'test content' > /tmp/test.txt" || echo "Creating test file completed"
-            node ../../packages/cli/dist/cli.js cat container:/tmp/test.txt || echo "Cat test completed"
+            node ../../packages/cli/dist/cli.js cat /tmp/test.txt || echo "Cat test completed"
             
             # Clean up test files
             rm -f test-host.txt container-copied.txt
