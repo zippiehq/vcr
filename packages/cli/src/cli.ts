@@ -15,6 +15,36 @@ function checkDockerAvailable() {
   }
 }
 
+function checkVsockSupport() {
+  console.log('Checking for vsock support...');
+  try {
+    // Run a privileged container to check for /dev/vsock
+    const result = execSync('docker run --rm --privileged alpine:latest ls -la /dev/vsock', { 
+      encoding: 'utf8',
+      stdio: 'pipe'
+    });
+    
+    if (result.includes('/dev/vsock')) {
+      console.log('✅ vsock support detected');
+      return true;
+    } else {
+      console.error('❌ Error: /dev/vsock not found in privileged container');
+      console.error('vsock support is required for VCR to function properly.');
+      console.error('Please ensure your system supports vsock or install the necessary kernel modules.');
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error('❌ Error: Failed to check vsock support');
+    console.error('vsock support is required for VCR to function properly.');
+    console.error('Please ensure your system supports vsock or install the necessary kernel modules.');
+    console.error('');
+    console.error('You can try installing vsock support with:');
+    console.error('  sudo modprobe vsock_loopback');
+    console.error('  sudo modprobe vhost_vsock');
+    process.exit(1);
+  }
+}
+
 function checkBuildxAvailable() {
   try {
     execSync('docker buildx version', { stdio: 'ignore' });
@@ -614,6 +644,9 @@ function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string,
     } catch (err) {
       console.log('ℹ️  Could not check for port conflicts');
     }
+    
+    // Check for vsock support
+    checkVsockSupport();
     
     // Build the container
     const imageDigest = buildImage(imageTag, profile, cacheDir, forceRebuild);
