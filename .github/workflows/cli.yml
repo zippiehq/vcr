@@ -95,18 +95,18 @@ jobs:
             
             # Test logs command (both application and system logs)
             echo "Testing logs command..."
-            node ../../packages/cli/dist/cli.js logs || echo "Application logs test completed"
-            node ../../packages/cli/dist/cli.js logs --system || echo "System logs test completed"
+            node ../../packages/cli/dist/cli.js logs && echo "Application logs test completed"
+            node ../../packages/cli/dist/cli.js logs --system && echo "System logs test completed"
             
             # Test exec command (both container and system mode)
             echo "Testing exec command..."
-            node ../../packages/cli/dist/cli.js exec "echo 'Hello from container'" || echo "Container exec test completed"
-            node ../../packages/cli/dist/cli.js exec --system "echo 'Hello from system'" || echo "System exec test completed"
+            node ../../packages/cli/dist/cli.js exec "echo 'Hello from container'" && echo "Container exec test completed"
+            node ../../packages/cli/dist/cli.js exec --system "echo 'Hello from system'" && echo "System exec test completed"
             
             # Test cat command
             echo "Testing cat command..."
-            node ../../packages/cli/dist/cli.js exec "echo 'test content' > /tmp/test.txt" || echo "Creating test file completed"
-            node ../../packages/cli/dist/cli.js cat /tmp/test.txt || echo "Cat test completed"
+            node ../../packages/cli/dist/cli.js exec "echo 'test content' > /tmp/test.txt" && echo "Creating test file completed"
+            node ../../packages/cli/dist/cli.js cat /tmp/test.txt && echo "Cat test completed"
             
             # Clean up test files
             rm -f test-host.txt container-copied.txt
@@ -159,10 +159,10 @@ jobs:
           echo "Testing prune commands..."
           
           # Test local prune
-          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune --local || echo "Local prune test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune --local && echo "Local prune test completed"
           
           # Test global prune
-          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune || echo "Global prune test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune && echo "Global prune test completed"
 
       - name: Test CLI error handling
         run: |
