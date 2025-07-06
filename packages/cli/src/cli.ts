@@ -1,16 +1,15 @@
 #!/usr/bin/env node
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { cwd } from 'process';
 import { join } from 'path';
-import { writeFileSync, existsSync, unlinkSync, mkdirSync, readFileSync, chmodSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { handleBuildCommand, handleUpCommand } from './commands/build';
 import { handleLogsCommand, handleExecCommand, handleShellCommand, handleCatCommand } from './commands/container';
 import { pruneVcrLocal, pruneVcr } from './commands/prune';
 import { handleCreateCommand } from './commands/create';
-import { generateLinuxKitYaml, generateDockerCompose } from './generate';
-import { checkDockerAvailable, checkBuildxAvailable, checkVcrBuilder, checkLocalRegistry, checkRiscv64Support, checkVsockSupport } from './checks';
+import { checkDockerAvailable } from './checks';
 
 export function getPathHash(): string {
   const currentPath = cwd();
