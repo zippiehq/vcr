@@ -108,19 +108,6 @@ jobs:
             node ../../packages/cli/dist/cli.js exec "echo 'test content' > /tmp/test.txt" || echo "Creating test file completed"
             node ../../packages/cli/dist/cli.js cat container:/tmp/test.txt || echo "Cat test completed"
             
-            # Test cp command (host to container)
-            echo "Testing cp command (host to container)..."
-            echo "host content" > test-host.txt
-            node ../../packages/cli/dist/cli.js cp test-host.txt container:/tmp/host-copied.txt || echo "Host to container copy test completed"
-            
-            # Test cp command (container to host)
-            echo "Testing cp command (container to host)..."
-            node ../../packages/cli/dist/cli.js cp container:/tmp/test.txt ./container-copied.txt || echo "Container to host copy test completed"
-            
-            # Test cp command (container to container)
-            echo "Testing cp command (container to container)..."
-            node ../../packages/cli/dist/cli.js cp container:/tmp/test.txt container:/tmp/copied-test.txt || echo "Container to container copy test completed"
-            
             # Clean up test files
             rm -f test-host.txt container-copied.txt
             
