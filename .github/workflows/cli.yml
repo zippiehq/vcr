@@ -133,7 +133,7 @@ jobs:
           
           # Test Python template
           echo "Testing Python template..."
-          node ../../packages/cli/dist/cli.js create test-python --template python
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js create test-python --template python
           ls -la test-python/
           
           # Test Node.js template
@@ -159,20 +159,20 @@ jobs:
           echo "Testing prune commands..."
           
           # Test local prune
-          node ../../packages/cli/dist/cli.js prune --local || echo "Local prune test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune --local || echo "Local prune test completed"
           
           # Test global prune
-          node ../../packages/cli/dist/cli.js prune || echo "Global prune test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune || echo "Global prune test completed"
 
       - name: Test CLI error handling
         run: |
           echo "Testing error handling..."
           
           # Test invalid commands
-          node ../../packages/cli/dist/cli.js invalid-command 2>&1 | grep -q "Unknown command" || echo "Invalid command error handling test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js invalid-command 2>&1 | grep -q "Unknown command" || echo "Invalid command error handling test completed"
           
           # Test missing arguments
-          node ../../packages/cli/dist/cli.js build 2>&1 | grep -q "No tag provided" || echo "Missing arguments error handling test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js build 2>&1 | grep -q "No tag provided" || echo "Missing arguments error handling test completed"
           
           # Test invalid profile
-          node ../../packages/cli/dist/cli.js build --profile invalid 2>&1 | grep -q "Error" || echo "Invalid profile error handling test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js build --profile invalid 2>&1 | grep -q "Error" || echo "Invalid profile error handling test completed"
