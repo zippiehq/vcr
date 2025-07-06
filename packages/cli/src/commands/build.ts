@@ -1,6 +1,6 @@
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { join } from 'path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { cwd } from 'process';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
@@ -241,7 +241,6 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
     } else {
       if (forceRebuild && existsSync(vcTarPath)) {
         console.log('🔄 Force rebuild: removing existing vc.tar');
-        const { unlinkSync } = require('fs');
         unlinkSync(vcTarPath);
       }
       
@@ -294,7 +293,6 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
       
       // Start snapshot builder to create squashfs
       console.log('Creating squashfs from vc.tar...');
-      const { spawnSync } = require('child_process');
       const snapshotCommand = [
         'docker', 'run', '--rm',
         '--user', `${uid}:${gid}`,
@@ -321,25 +319,222 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
     
     // Additional steps for prod profile
     if (profile === 'prod') {
-      console.log('🔄 Prod profile: Creating Cartesi machine...');
-      const cartesiCommand = [
-        'docker', 'run', '--rm',
-        '--user', `${uid}:${gid}`,
-        '-v', `${currentDir}:/work`,
-        '-v', `${cacheDir}:/cache`,
-        '-w', '/cache',
-        'ghcr.io/zippiehq/vcr-snapshot-builder',
-        'cartesi-machine',
-        '--flash-drive=label:root,filename:/cache/vc.squashfs',
-        '--append-bootargs=loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro',
-        '--skip-root-hash-check',
-        '--dump-machine-config',
-        '--output-path=/cache/vc.cartesi'
-      ];
+      const cmSnapshotPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot') : join(currentDir, 'vc-cm-snapshot');
+      const cmSquashfsPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs') : join(currentDir, 'vc-cm-snapshot.squashfs');
+      const verityPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.verity') : join(currentDir, 'vc-cm-snapshot.squashfs.verity');
+      const rootHashPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.root-hash') : join(currentDir, 'vc-cm-snapshot.squashfs.root-hash');
       
-      console.log(`Executing: ${cartesiCommand.join(' ')}`);
-      execSync(cartesiCommand.join(' '), { stdio: 'inherit', cwd: currentDir });
-      console.log('✅ Cartesi machine created successfully');
+      // Check if we need to create Cartesi machine snapshot
+      if (!forceRebuild && existsSync(cmSnapshotPath)) {
+        console.log('✅ vc-cm-snapshot already exists, skipping Cartesi machine creation');
+      } else {
+        if (forceRebuild && existsSync(cmSnapshotPath)) {
+          console.log('🔄 Force rebuild: removing existing vc-cm-snapshot');
+          execSync(`rm -rf "${cmSnapshotPath}"`, { stdio: 'ignore' });
+        }
+        
+        console.log('Creating Cartesi machine snapshot...');
+        const cartesiCommand = [
+          'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-w', '/cache',
+          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          'bash', '-c',
+          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
+        ];
+        
+        console.log(`Executing: ${cartesiCommand.join(' ')}`);
+        const cartesiResult = spawnSync(cartesiCommand[0], cartesiCommand.slice(1), { stdio: 'inherit', cwd: currentDir });
+        
+        if (cartesiResult.status !== 0) {
+          console.error('Cartesi machine command failed with status:', cartesiResult.status);
+          throw new Error(`Cartesi machine command failed with status ${cartesiResult.status}`);
+        }
+        
+        console.log('✅ Cartesi machine snapshot created successfully');
+        
+        // Print the hash from vc-cm-snapshot/hash
+        try {
+          const hashPath = join(cmSnapshotPath, 'hash');
+          if (existsSync(hashPath)) {
+            const hashBuffer = readFileSync(hashPath);
+            const hash = hashBuffer.toString('hex');
+            console.log(`🔐 Cartesi machine hash: ${hash}`);
+          } else {
+            console.error('❌ Error: Cartesi machine hash file not found at vc-cm-snapshot/hash');
+            console.error('This indicates the Cartesi machine creation failed or the hash file was not generated.');
+            console.error('Checking if snapshot directory exists and listing contents...');
+            try {
+              if (existsSync(cmSnapshotPath)) {
+                const contents = execSync(`ls -la "${cmSnapshotPath}"`, { encoding: 'utf8' });
+                console.error('Snapshot directory contents:');
+                console.error(contents);
+              } else {
+                console.error('Snapshot directory does not exist');
+              }
+            } catch (listErr) {
+              console.error('Could not list snapshot directory contents:', listErr);
+            }
+            process.exit(1);
+          }
+        } catch (hashErr) {
+          console.error('❌ Error: Could not read Cartesi machine hash:', hashErr);
+          process.exit(1);
+        }
+      }
+      
+      // Check if we need to compress Cartesi machine snapshot
+      if (!forceRebuild && existsSync(cmSquashfsPath)) {
+        console.log('✅ vc-cm-snapshot.squashfs already exists, skipping compression');
+      } else {
+        console.log('Creating compressed Cartesi machine snapshot...');
+        const compressCommand = [
+          'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-w', '/cache',
+          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          'bash', '-c',
+          'rm -f /cache/vc-cm-snapshot.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible'
+        ];
+        
+        console.log(`Executing: ${compressCommand.join(' ')}`);
+        const compressResult = spawnSync(compressCommand[0], compressCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+        
+        if (compressResult.status !== 0) {
+          console.error('Compression command failed with output:');
+          if (compressResult.stdout) console.error('stdout:', compressResult.stdout.toString());
+          if (compressResult.stderr) console.error('stderr:', compressResult.stderr.toString());
+          throw new Error(`Compression command failed with status ${compressResult.status}`);
+        }
+        
+        console.log('✅ Compressed Cartesi machine snapshot created successfully');
+      }
+      
+      // Check if we need to create verity hash tree
+      if (!forceRebuild && existsSync(verityPath) && existsSync(rootHashPath)) {
+        console.log('✅ Verity files already exist, skipping verity creation');
+      } else {
+        console.log('Creating verity hash tree...');
+        
+        // Read Cartesi machine hash for salt and UUID generation
+        let cartesiMachineHash = '';
+        try {
+          const hashPath = join(cmSnapshotPath, 'hash');
+          if (existsSync(hashPath)) {
+            const hashBuffer = readFileSync(hashPath);
+            cartesiMachineHash = hashBuffer.toString('hex');
+            console.log(`Using Cartesi machine hash for verity: ${cartesiMachineHash}`);
+          } else {
+            console.error('Error: Cartesi machine hash file not found');
+            process.exit(1);
+          }
+        } catch (err) {
+          console.error('Error reading Cartesi machine hash:', err);
+          process.exit(1);
+        }
+        
+        // Use Cartesi machine hash for salt (first 32 chars)
+        const salt = cartesiMachineHash.substring(0, 32);
+        
+        // Generate deterministic UUID from Cartesi machine hash (first 32 chars of hash)
+        const uuidBase = cartesiMachineHash.substring(0, 32);
+        const deterministicUuid = `${uuidBase.substring(0, 8)}-${uuidBase.substring(8, 12)}-${uuidBase.substring(12, 16)}-${uuidBase.substring(16, 20)}-${uuidBase.substring(20, 32)}`;
+        
+        const verityCommand = [
+          'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-w', '/cache',
+          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          'bash', '-c',
+          `veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash --salt=${salt} --uuid=${deterministicUuid} format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs.verity`
+        ];
+        
+        console.log(`Executing: ${verityCommand.join(' ')}`);
+        const verityResult = spawnSync(verityCommand[0], verityCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+        
+        if (verityResult.status !== 0) {
+          console.error('Verity setup command failed with output:');
+          if (verityResult.stdout) console.error('stdout:', verityResult.stdout.toString());
+          if (verityResult.stderr) console.error('stderr:', verityResult.stderr.toString());
+          throw new Error(`Verity setup command failed with status ${verityResult.status}`);
+        }
+        
+        console.log('✅ Verity hash tree created successfully');
+      }
+      
+      // Print all hashes and file contents (always run, even if cached)
+      console.log('\n📊 Build Artifacts Summary:');
+      
+      // Print SHA256 of vc.squashfs
+      try {
+        const vcSquashfsPath = cacheDir ? join(cacheDir, 'vc.squashfs') : join(currentDir, 'vc.squashfs');
+        if (existsSync(vcSquashfsPath)) {
+          const vcSquashfsHash = execSync(`sha256sum "${vcSquashfsPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
+          console.log(`📦 vc.squashfs SHA256: ${vcSquashfsHash}`);
+        } else {
+          console.log('⚠️  vc.squashfs not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not calculate vc.squashfs SHA256:', err);
+      }
+      
+      // Print SHA256 of vc-cm-snapshot.squashfs
+      try {
+        const cmSquashfsPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs') : join(currentDir, 'vc-cm-snapshot.squashfs');
+        if (existsSync(cmSquashfsPath)) {
+          const cmSquashfsHash = execSync(`sha256sum "${cmSquashfsPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
+          console.log(`📦 vc-cm-snapshot.squashfs SHA256: ${cmSquashfsHash}`);
+        } else {
+          console.log('⚠️  vc-cm-snapshot.squashfs not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not calculate vc-cm-snapshot.squashfs SHA256:', err);
+      }
+      
+      // Print Cartesi machine hash
+      try {
+        const hashPath = join(cmSnapshotPath, 'hash');
+        if (existsSync(hashPath)) {
+          const hashBuffer = readFileSync(hashPath);
+          const hash = hashBuffer.toString('hex');
+          console.log(`🔐 Cartesi machine hash: ${hash}`);
+        } else {
+          console.log('⚠️  Cartesi machine hash file not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not read Cartesi machine hash:', err);
+      }
+      
+      // Print root-hash content
+      try {
+        if (existsSync(rootHashPath)) {
+          const rootHash = execSync(`cat "${rootHashPath}"`, { encoding: 'utf8' }).trim();
+          console.log(`🔑 Root hash: ${rootHash}`);
+        } else {
+          console.log('⚠️  Root hash file not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not read root hash:', err);
+      }
+      
+      // Print SHA256 of verity file
+      try {
+        const verityPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.verity') : join(currentDir, 'vc-cm-snapshot.squashfs.verity');
+        if (existsSync(verityPath)) {
+          const verityHash = execSync(`sha256sum "${verityPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
+          console.log(`🔒 Verity file SHA256: ${verityHash}`);
+        } else {
+          console.log('⚠️  Verity file not found');
+        }
+      } catch (err) {
+        console.log('⚠️  Could not calculate verity file SHA256:', err);
+      }
     }
     
   } catch (err) {
@@ -530,6 +725,31 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     
   } catch (err) {
     console.error('Error starting development environment:', err);
+    process.exit(1);
+  }
+}
+
+function buildDevContainer() {
+  const currentDir = cwd();
+  console.log('Building development container...');
+  
+  try {
+    // Check if Dockerfile exists
+    if (!existsSync(join(currentDir, 'Dockerfile'))) {
+      console.error('Error: No Dockerfile found in current directory');
+      process.exit(1);
+    }
+    
+    const imageName = 'vcr-dev-local';
+    const buildCommand = `docker build -t ${imageName} .`;
+    
+    console.log(`Building image: ${imageName}`);
+    console.log(`Executing: ${buildCommand}`);
+    execSync(buildCommand, { stdio: 'inherit', cwd: currentDir });
+    
+    return imageName;
+  } catch (err) {
+    console.error('Error building development container:', err);
     process.exit(1);
   }
 } 
