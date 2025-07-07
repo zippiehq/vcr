@@ -50,6 +50,8 @@ jobs:
           
       - name: Build Multi-Arch
         uses: depot/build-push-action@v1
+        env:
+          SOURCE_DATE_EPOCH: 0
         with:
           context: ./packages/sample-python
           platforms: linux/amd64,linux/arm64,linux/riscv64
@@ -58,7 +60,7 @@ jobs:
           build-args: |
             SOURCE_DATE_EPOCH=0
           sbom: false
-          push: true
+          push: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-to: |
