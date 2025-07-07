@@ -45,7 +45,6 @@ jobs:
           
       - name: Build Multi-Arch
         uses: depot/build-push-action@v1
-        env:
         with:
           context: ./packages/sample-python
           platforms: linux/amd64,linux/arm64,linux/riscv64
