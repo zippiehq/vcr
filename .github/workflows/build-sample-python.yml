@@ -49,6 +49,10 @@ jobs:
           context: ./packages/sample-python
           platforms: linux/amd64,linux/arm64,linux/riscv64
           token: ${{ secrets.DEPOT_API_TOKEN }}
+          provenance: false
+          build-args: |
+            SOURCE_DATE_EPOCH=0
+          sbom: false
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
