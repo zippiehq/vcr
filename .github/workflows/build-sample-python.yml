@@ -33,7 +33,7 @@ jobs:
         uses: depot/setup-action@v1
         with:
           project: ${{ secrets.DEPOT_PROJECT_ID }}
-          token: ${{ secrets.DEPOT_TOKEN }}
+          token: ${{ secrets.DEPOT_API_TOKEN }}
         
       - name: Set cache date
         id: cache_date
@@ -47,7 +47,7 @@ jobs:
       - name: Build Multi-Arch
         uses: depot/build-push-action@v1
         env:
-          DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
+          token: ${{ secrets.DEPOT_API_TOKEN }}
         with:
           context: ./packages/sample-python
           platforms: linux/amd64,linux/arm64,linux/riscv64
