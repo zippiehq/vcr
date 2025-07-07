@@ -22,6 +22,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Create virtual environment and install dependencies
+RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 RUN pip install --no-cache-dir -r requirements.txt
 
