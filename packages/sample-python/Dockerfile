@@ -12,6 +12,8 @@ EOF
 
 
 FROM base AS builder
+ARG APT_UPDATE_SNAPSHOT=20250707T074213Z
+ARG DEBIAN_FRONTEND=noninteractive
 # Install Python 3 and pip for building
 RUN apt-get install -y python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/*
@@ -35,6 +37,8 @@ RUN python -m compileall --invalidation-mode checked-hash .
 
 # Runtime stage - minimal image
 FROM base AS runtime
+ARG APT_UPDATE_SNAPSHOT=20250707T074213Z
+ARG DEBIAN_FRONTEND=noninteractive
 
 # Install Python 3 runtime (includes dataclasses and other stdlib modules)
 RUN apt-get install -y --no-install-recommends python3-minimal libpython3-stdlib && \
