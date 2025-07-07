@@ -60,7 +60,6 @@ jobs:
           build-args: |
             SOURCE_DATE_EPOCH=0
           sbom: false
-          no-cache: true
           push: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
