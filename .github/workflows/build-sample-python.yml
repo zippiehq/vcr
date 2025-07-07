@@ -1,0 +1,58 @@
+name: Build Sample Python Multi-Arch
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'packages/sample-python/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/sample-python/**'
+  workflow_dispatch:
+    inputs:
+      cache_date:
+        description: 'Cache date (YYYYMMDD)'
+        required: true
+        default: '20241201'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: zippiehq/vcr-build-cache
+
+jobs:
+  build-multiarch:
+    runs-on: ubuntu-latest
+    uses: depot/setup-action@v1
+    with:
+      project: ${{ secrets.DEPOT_PROJECT_ID }}
+      token: ${{ secrets.DEPOT_TOKEN }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Set cache date
+        id: cache_date
+        run: |
+          if [ "${{ github.event.inputs.cache_date }}" != "" ]; then
+            echo "date=${{ github.event.inputs.cache_date }}" >> $GITHUB_OUTPUT
+          else
+            echo "date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Build Multi-Arch
+        uses: depot/build-push-action@v1
+        with:
+          context: ./packages/sample-python
+          platforms: linux/amd64,linux/arm64,linux/riscv64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.cache_date.outputs.date }}
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache
+            type=registry,ref=${{ env.REGISTRY }}/zippiehq/vcr-build-cache:${{ steps.cache_date.outputs.date }}
+          cache-to: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max
+            type=registry,ref=${{ env.REGISTRY }}/zippiehq/vcr-build-cache:${{ steps.cache_date.outputs.date }},mode=max 
