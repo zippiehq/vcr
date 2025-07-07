@@ -23,14 +23,16 @@ env:
 jobs:
   build-multiarch:
     runs-on: ubuntu-latest
-    uses: depot/setup-action@v1
-    with:
-      project: ${{ secrets.DEPOT_PROJECT_ID }}
-      token: ${{ secrets.DEPOT_TOKEN }}
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        
+      - name: Setup Depot
+        uses: depot/setup-action@v1
+        with:
+          project: ${{ secrets.DEPOT_PROJECT_ID }}
+          token: ${{ secrets.DEPOT_TOKEN }}
         
       - name: Set cache date
         id: cache_date
