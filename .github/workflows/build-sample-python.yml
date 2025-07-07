@@ -54,7 +54,7 @@ jobs:
           SOURCE_DATE_EPOCH: 0
         with:
           context: ./packages/sample-python
-          platforms: linux/amd64,linux/arm64,linux/riscv64
+          platforms: linux/riscv64
           token: ${{ secrets.DEPOT_API_TOKEN }}
           provenance: false
           build-args: |
