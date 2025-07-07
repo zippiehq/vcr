@@ -31,9 +31,8 @@ jobs:
         
       - name: Setup Depot
         uses: depot/setup-action@v1
-        with:
-          project: ${{ secrets.DEPOT_PROJECT_ID }}
-          token: ${{ secrets.DEPOT_API_TOKEN }}
+        env:
+          DEPOT_TOKEN: ${{ secrets.DEPOT_API_TOKEN }}
         
       - name: Set cache date
         id: cache_date
