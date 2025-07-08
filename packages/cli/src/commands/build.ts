@@ -567,9 +567,11 @@ export function buildImage(imageTag: string, profile: string, cacheDir?: string,
     '--builder', 'vcr-builder',
     '--platform', platforms.join(','),
     '-t', fullImageName,
-    '--push',
     '--provenance=false',
-    '--sbom=false'
+    '--sbom=false',
+    '--build-arg=BUILDKIT_INLINE_CACHE=1',
+    '--output', 'type=image,rewrite-timestamp=true,push=true',
+//   '--debug'
   ];
   
   // Add cache directory if specified
@@ -578,10 +580,34 @@ export function buildImage(imageTag: string, profile: string, cacheDir?: string,
     buildArgs.push('--cache-to', `type=local,dest=${cacheDir},mode=max`);
   }
   
+  // Add reproducible build arguments
+  buildArgs.push('--build-arg', 'SOURCE_DATE_EPOCH=0');
+  
+  // Add GitHub Container Registry cache for RISC-V 64 builds
+  
   // Add context directory
   buildArgs.push('.');
   
   const buildCommand = `docker ${buildArgs.join(' ')}`;
+  
+  console.log(`\n🔧 Clamping file timestamps to epoch...`);
+  try {
+    // Clamp all files and directories to Unix epoch (mtime 0)
+    execSync('find . -type f -exec touch -t 197001010000.00 {} \\;', { 
+      stdio: 'inherit', 
+      cwd: currentDir 
+    });
+    execSync('find . -type d -exec touch -t 197001010000.00 {} \\;', { 
+      stdio: 'inherit', 
+      cwd: currentDir 
+    });
+    console.log(`✅ Timestamps clamped successfully`);
+  } catch (err) {
+    console.log(`⚠️  Could not clamp timestamps: ${err}`);
+  }
+  
+  console.log(`\n🔧 Executing build command:`);
+  console.log(`${buildCommand}\n`);
   
   try {
     verifyRegistryConnectivity();
