@@ -68,6 +68,8 @@ jobs:
           push: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          outputs:  |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:image,rewrite-timestamp=true
           cache-to: |
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max,rewrite-timestamp=true
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.cache_date.outputs.date }},mode=max,rewrite-timestamp=true
