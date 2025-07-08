@@ -13,12 +13,14 @@ FROM base AS builder
 # Install Python 3 and pip for building
 RUN apt-get install -y python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /app
 # Create app directory
 WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-RUN ls -al /app/requirements.txt
+RUN ls -al /requirements.txt
 
 # Create virtual environment and install dependencies
 RUN python3 -m venv /app/venv
