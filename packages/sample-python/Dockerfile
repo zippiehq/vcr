@@ -9,12 +9,12 @@ apt-get install -y --no-install-recommends ca-certificates curl
 apt-get update --snapshot=20250707T074213Z
 EOF
 
-
 FROM base AS builder
 # Install Python 3 and pip for building
 RUN apt-get install -y python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /app
 # Create app directory
 WORKDIR /app
 
@@ -48,6 +48,7 @@ COPY --from=builder /app/app.py /app/app.py
 
 # Set up environment
 ENV PATH="/app/venv/bin:$PATH"
+RUN mkdir -p /app
 WORKDIR /app
 
 # Change ownership to app user
