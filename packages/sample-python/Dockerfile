@@ -13,8 +13,6 @@ FROM base AS builder
 # Install Python 3 and pip for building
 RUN apt-get install -y python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /app
 # Create app directory
 WORKDIR /app
 
