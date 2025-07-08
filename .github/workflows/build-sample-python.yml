@@ -65,7 +65,6 @@ jobs:
             SOURCE_DATE_EPOCH=0
             BUILDKIT_INLINE_CACHE=1
           sbom: false
-          push: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           outputs:  |
