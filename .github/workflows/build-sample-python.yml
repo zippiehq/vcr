@@ -63,12 +63,13 @@ jobs:
           provenance: false
           build-args: |
             SOURCE_DATE_EPOCH=0
+            BUILDKIT_INLINE_CACHE=1
           sbom: false
           push: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-to: |
             type=inline
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max,compression=uncompressed,rewrite-timestamp=true
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.cache_date.outputs.date }},mode=max,compression=uncompressed,rewrite-timestamp=true
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max,rewrite-timestamp=true
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.cache_date.outputs.date }},mode=max,rewrite-timestamp=true
     
