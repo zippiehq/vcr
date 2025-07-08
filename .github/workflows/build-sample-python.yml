@@ -48,9 +48,13 @@ jobs:
             echo "date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
           fi
           
-      -
-        name: Set up Docker Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Clamp file timestamps to 0
+        run: |
+          find ./packages/sample-python -type f -exec touch -t 197001010000.00 {} \;
+          find ./packages/sample-python -type d -exec touch -t 197001010000.00 {} \;
 
       - name: Build Multi-Arch
         uses: docker/build-push-action@v6
