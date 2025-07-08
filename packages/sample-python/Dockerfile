@@ -20,7 +20,7 @@ WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-RUN ls -al /requirements.txt
+RUN ls -al /app/requirements.txt
 
 # Create virtual environment and install dependencies
 RUN python3 -m venv /app/venv
