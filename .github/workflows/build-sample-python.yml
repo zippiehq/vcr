@@ -66,7 +66,7 @@ jobs:
             BUILDKIT_INLINE_CACHE=1
           sbom: false
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:image
           outputs:  |
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:image,rewrite-timestamp=true,push=true
           cache-to: |
