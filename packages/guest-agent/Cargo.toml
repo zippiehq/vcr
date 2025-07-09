@@ -9,7 +9,14 @@ libc = "0.2"
 thiserror = "1.0"
 log = "0.4"
 env_logger = "0.10"
+colored = "2.1.0"
+vsock = "0.5.0"
+vsock-protocol = { path = "../vsock-protocol" }
 
 [[bin]]
 name = "guest-agent"
-path = "src/main.rs" 
+path = "src/main.rs"
+
+[lib]
+name = "guest_agent"
+path = "src/lib.rs" 
