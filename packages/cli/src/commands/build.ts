@@ -1,6 +1,6 @@
 import { execSync, spawnSync } from 'child_process';
 import { join } from 'path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync } from 'fs';
 import { cwd } from 'process';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
@@ -414,6 +414,22 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         console.log('✅ Compressed Cartesi machine snapshot created successfully');
       }
       
+      // Verify file size is divisible by 512 (required for block devices)
+      let fileSize: number;
+      try {
+        const stats = statSync(cmSquashfsPath);
+        fileSize = stats.size;
+        if (fileSize % 512 !== 0) {
+          console.error(`❌ Error: vc-cm-snapshot.squashfs size (${fileSize} bytes) is not divisible by 512`);
+          console.error(`   Remainder: ${fileSize % 512} bytes`);
+          console.error(`   Required for proper block device alignment`);
+          process.exit(1);
+        }
+      } catch (err) {
+        console.error('❌ Error: Could not verify vc-cm-snapshot.squashfs file size:', err);
+        process.exit(1);
+      }
+      
       // Check if we need to create verity hash tree
       if (!forceRebuild && existsSync(verityPath) && existsSync(rootHashPath)) {
         console.log('✅ Verity files already exist, skipping verity creation');
@@ -452,7 +468,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          `veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash --salt=${salt} --uuid=${deterministicUuid} format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs.verity`
+          `rm -f /cache/vc-cm-snapshot.squashfs.verity && veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash --hash-offset=${fileSize} --salt=${salt} --uuid=${deterministicUuid} format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs`
         ];
         
         console.log(`Executing: ${verityCommand.join(' ')}`);
@@ -523,18 +539,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         console.log('⚠️  Could not read root hash:', err);
       }
       
-      // Print SHA256 of verity file
-      try {
-        const verityPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.verity') : join(currentDir, 'vc-cm-snapshot.squashfs.verity');
-        if (existsSync(verityPath)) {
-          const verityHash = execSync(`sha256sum "${verityPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
-          console.log(`🔒 Verity file SHA256: ${verityHash}`);
-        } else {
-          console.log('⚠️  Verity file not found');
-        }
-      } catch (err) {
-        console.log('⚠️  Could not calculate verity file SHA256:', err);
-      }
+
     }
     
   } catch (err) {
