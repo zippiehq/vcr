@@ -131,7 +131,7 @@ services:
       - CAP_SYS_CHROOT
       - CAP_MKNOD
       - CAP_AUDIT_WRITE
-      - CAP_SETFOWNER
+      - CAP_SETFCAP
 ${netConfig}
 files:
   - path: root/.ssh/authorized_keys
