@@ -1,5 +1,7 @@
 import { execSync } from 'child_process';
-import { writeFileSync } from 'fs';
+import { writeFileSync, existsSync, statSync, rmdirSync, unlinkSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 export function checkDockerAvailable() {
   try {
@@ -57,7 +59,12 @@ http = true
 insecure = true
 `;
     
-    const configPath = '/tmp/buildkitd.toml';
+    const vcrCacheDir = join(homedir(), '.cache', 'vcr');
+    if (!existsSync(vcrCacheDir)) {
+      mkdirSync(vcrCacheDir, { recursive: true });
+    }
+    
+    const configPath = join(vcrCacheDir, 'buildkitd.toml');
     writeFileSync(configPath, buildkitConfig);
     console.log('✅ BuildKit configuration created');
     return configPath;
@@ -151,9 +158,17 @@ function startLocalRegistry() {
         }
       };
       
-      // Write config to temp file
-      const configPath = '/tmp/registry-config.yml';
+      // Write config to VCR cache directory (persistent across reboots)
+      const vcrCacheDir = join(homedir(), '.cache', 'vcr');
+      if (!existsSync(vcrCacheDir)) {
+        mkdirSync(vcrCacheDir, { recursive: true });
+      }
+      
+      const configPath = join(vcrCacheDir, 'registry-config.yml');
+      
+      // Ensure the file is created before Docker run
       writeFileSync(configPath, JSON.stringify(registryConfig, null, 2));
+      console.log(`✅ Registry config created at: ${configPath}`);
       
       execSync(`docker run -d -p 5001:5000 --restart=always --name vcr-registry --network vcr-network -v ${configPath}:/etc/docker/registry/config.yml registry:3`, { stdio: 'inherit' });
     }
