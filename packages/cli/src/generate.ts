@@ -117,6 +117,21 @@ services:
       - path: all
   - name: app
     image: localhost:5001/${imageReference}
+    capabilities:
+      - CAP_CHOWN
+      - CAP_DAC_OVERRIDE
+      - CAP_FOWNER
+      - CAP_FSETID
+      - CAP_KILL
+      - CAP_SETGID
+      - CAP_SETUID
+      - CAP_SETPCAP
+      - CAP_NET_BIND_SERVICE
+      - CAP_NET_RAW
+      - CAP_SYS_CHROOT
+      - CAP_MKNOD
+      - CAP_AUDIT_WRITE
+      - CAP_SETFOWNER
 ${netConfig}
 files:
   - path: root/.ssh/authorized_keys
