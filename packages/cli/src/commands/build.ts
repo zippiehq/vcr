@@ -482,6 +482,31 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
         }
         
         console.log('✅ Verity hash tree created successfully');
+        
+        // Verify the verity setup was correct
+        console.log('Verifying verity setup...');
+        const verifyCommand = [
+          'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-w', '/cache',
+          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          'bash', '-c',
+          `veritysetup verify --root-hash-file=/cache/vc-cm-snapshot.squashfs.root-hash --hash-offset=${fileSize} /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs`
+        ];
+        
+        console.log(`Executing verification: ${verifyCommand.join(' ')}`);
+        const verifyResult = spawnSync(verifyCommand[0], verifyCommand.slice(1), { stdio: ['inherit', 'pipe', 'pipe'], cwd: currentDir });
+        
+        if (verifyResult.status !== 0) {
+          console.error('Verity verification failed with output:');
+          if (verifyResult.stdout) console.error('stdout:', verifyResult.stdout.toString());
+          if (verifyResult.stderr) console.error('stderr:', verifyResult.stderr.toString());
+          throw new Error(`Verity verification failed with status ${verifyResult.status}`);
+        }
+        
+        console.log('✅ Verity setup verified successfully');
       }
       
       // Print all hashes and file contents (always run, even if cached)
@@ -538,6 +563,9 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
       } catch (err) {
         console.log('⚠️  Could not read root hash:', err);
       }
+      
+      // Print hash offset
+      console.log(`📍 Hash offset: ${fileSize} bytes`);
       
 
     }
