@@ -33,6 +33,9 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   
   // Add net: host for test and prod profiles
   const netConfig = (profile === 'test' || profile === 'prod') ? '    net: host' : '';
+  
+  // Check for custom guest agent image
+  const guestAgentImage = process.env.CUSTOM_GUEST_AGENT_IMAGE || 'ghcr.io/zippiehq/vcr-guest-agent';
   const sshDebugKey = `-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABlwAAAAdzc2gtcn
 NhAAAAAwEAAQAAAYEAwWatdM2NYmrKlCEQfgz2P6q2UtHj32CVelyW1zrl8h70vxkKknIS
@@ -104,8 +107,14 @@ services:
     binds.add:
       - /root/.ssh:/root/.ssh
   - name: guest-agent
-    image: ghcr.io/zippiehq/vcr-guest-agent
+    image: ${guestAgentImage}
     net: host
+    binds:
+      - /dev:/dev
+    capabilities:
+      - all
+    devices:
+      - path: all
   - name: app
     image: localhost:5001/${imageReference}
 ${netConfig}
