@@ -23,6 +23,34 @@ import {
 import { checkVsockSupport } from '../checks';
 import { generateLinuxKitYaml, generateDockerCompose } from '../generate';
 
+// Function to detect current profile from running containers
+function detectCurrentProfile(): string | null {
+  const pathHash = getPathHash();
+  const containerName = `${pathHash}-vcr-isolated-service`;
+  
+  try {
+    // Check if container exists and is running
+    const containerStatus = execSync(`docker ps --filter "name=${containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim();
+    if (!containerStatus) {
+      return null; // No container running
+    }
+    
+    // Get the profile label from the container
+    const profileLabel = execSync(`docker inspect ${containerName} --format '{{ index .Config.Labels "vcr.profile" }}'`, { encoding: 'utf8' }).trim();
+    return profileLabel || null;
+  } catch (err) {
+    return null; // Could not detect profile
+  }
+}
+
+// Function to check if profile change is needed
+function needsProfileChange(currentProfile: string | null, requestedProfile: string): boolean {
+  if (!currentProfile) {
+    return true; // No current profile, need to start
+  }
+  return currentProfile !== requestedProfile;
+}
+
 export function handleBuildCommand(args: string[]): void {
   checkBuildxAvailable();
   checkVcrBuilder();
@@ -701,8 +729,28 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     let needsUpdate = false;
     
+    // Detect current profile and check if profile change is needed
+    const currentProfile = detectCurrentProfile();
+    const profileChangeNeeded = needsProfileChange(currentProfile, profile);
+    
+    if (profileChangeNeeded && currentProfile) {
+      console.log(`🔄 Profile change detected: ${currentProfile} → ${profile}`);
+      console.log('Bringing down current environment...');
+      try {
+        execSync(`docker compose -f ${composePath} down`, { stdio: 'inherit' });
+        console.log('✅ Current environment stopped');
+      } catch (err) {
+        console.log('⚠️  Could not stop current environment, continuing...');
+      }
+      needsUpdate = true;
+    } else if (currentProfile) {
+      console.log(`✅ Current profile (${currentProfile}) matches requested profile (${profile})`);
+    } else {
+      console.log(`🚀 Starting new environment with profile: ${profile}`);
+    }
+    
     // Check if compose file exists and if tag matches
-    if (!forceRestart && existsSync(composePath)) {
+    if (!forceRestart && existsSync(composePath) && !profileChangeNeeded) {
       try {
         const composeContent = readFileSync(composePath, 'utf8');
         const composeConfig = JSON.parse(composeContent);
@@ -757,8 +805,8 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     execSync(waitCommand, { stdio: 'inherit' });
     
     console.log('\nDevelopment environment is ready!');
-    console.log('- Function endpoint: http://localhost:8080/function');
-    console.log('- Health check: http://localhost:8080/function/health');
+    console.log(`- Function endpoint: http://localhost:8080 (IPv4) or http://[::1]:8081 (IPv6)`);
+    console.log('- Health check: http://localhost:8080/health');
     console.log('- To stop: vcr down');
     console.log('- To view container logs: vcr logs');
     console.log('- To follow container logs: vcr logs -f');
