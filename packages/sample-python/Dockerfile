@@ -8,47 +8,21 @@ apt-get update
 apt-get install -y --no-install-recommends ca-certificates curl
 apt-get update --snapshot=20250707T074213Z
 EOF
-
-FROM base AS builder
-# Install Python 3 and pip for building
-RUN apt-get install -y python3 python3-pip python3-venv && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN mkdir -p /app
-# Create app directory
-WORKDIR /app
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN ls -al /app/requirements.txt
-
-# Create virtual environment and install dependencies
-RUN python3 -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code last to avoid invalidating pip cache
-COPY app.py .
-
-# Compile Python bytecode
-RUN python -m compileall --invalidation-mode checked-hash .
-
 # Runtime stage - minimal image
 FROM base AS runtime
 
 # Install Python 3 runtime (includes dataclasses and other stdlib modules)
-RUN apt-get install -y --no-install-recommends python3-minimal libpython3-stdlib && \
+RUN apt-get install -y --no-install-recommends python3-minimal libpython3-stdlib python3-aiohttp && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app
 
 # Copy virtual environment from builder
-COPY --from=builder /app/venv /app/venv
-COPY --from=builder /app/app.py /app/app.py
+COPY ./app.py /app/app.py
+RUN cd /app; python3 -m compileall --invalidation-mode checked-hash .
 
 # Set up environment
-ENV PATH="/app/venv/bin:$PATH"
 RUN mkdir -p /app
 WORKDIR /app
 
@@ -62,4 +36,4 @@ USER app
 EXPOSE 8080
 
 # Run the application
-CMD ["python", "app.py"] 
+CMD ["python3", "app.py"] 
