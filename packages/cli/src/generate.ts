@@ -147,6 +147,7 @@ qemu-system-riscv64 \
       ],
       tty: true,
       stdin_open: true,
+      restart: "no",
       healthcheck: {
         test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
         interval: '30s',
@@ -163,7 +164,12 @@ qemu-system-riscv64 \
         'traefik.http.services.isolated.loadbalancer.server.port=8080',
         'traefik.http.services.isolated.loadbalancer.server.scheme=http',
         'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
-        'traefik.http.routers.isolated.middlewares=strip-function'
+        'traefik.http.routers.isolated.middlewares=strip-function',
+        `vcr.profile=${profile}`,
+        `vcr.image.tag=${imageTag}`,
+        `vcr.image.digest=${imageDigest || 'none'}`,
+        `vcr.build.timestamp=${new Date().toISOString()}`,
+        `vcr.path.hash=${pathHash}`
       ]
     };
   } else if (profile === 'prod') {
@@ -188,6 +194,7 @@ qemu-system-riscv64 \
       ],
       tty: true,
       stdin_open: true,
+      restart: "no",
       healthcheck: {
         test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
         interval: '30s',
@@ -202,7 +209,12 @@ qemu-system-riscv64 \
         'traefik.http.services.isolated.loadbalancer.server.port=8080',
         'traefik.http.services.isolated.loadbalancer.server.scheme=http',
         'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
-        'traefik.http.routers.isolated.middlewares=strip-function'
+        'traefik.http.routers.isolated.middlewares=strip-function',
+        `vcr.profile=${profile}`,
+        `vcr.image.tag=${imageTag}`,
+        `vcr.image.digest=${imageDigest || 'none'}`,
+        `vcr.build.timestamp=${new Date().toISOString()}`,
+        `vcr.path.hash=${pathHash}`
       ]
     };
   } else {
@@ -213,6 +225,7 @@ qemu-system-riscv64 \
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
       volumes: [`${pathHash}_vcr_shared_data:/media/vcr`],
+      restart: "no",
       healthcheck: {
         test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
         interval: '30s',
@@ -227,7 +240,12 @@ qemu-system-riscv64 \
         'traefik.http.services.isolated.loadbalancer.server.port=8080',
         'traefik.http.services.isolated.loadbalancer.server.scheme=http',
         'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
-        'traefik.http.routers.isolated.middlewares=strip-function'
+        'traefik.http.routers.isolated.middlewares=strip-function',
+        `vcr.profile=${profile}`,
+        `vcr.image.tag=${imageTag}`,
+        `vcr.image.digest=${imageDigest || 'none'}`,
+        `vcr.build.timestamp=${new Date().toISOString()}`,
+        `vcr.path.hash=${pathHash}`
       ]
     };
   }
@@ -238,6 +256,7 @@ qemu-system-riscv64 \
         image: 'traefik:v2.10',
         container_name: `${pathHash}-vcr-traefik`,
         hostname: 'vcr-traefik',
+        restart: "no",
         command: [
           '--api.insecure=true',
           '--api.dashboard=false',
@@ -262,6 +281,7 @@ qemu-system-riscv64 \
         image: 'alpine',
         container_name: `${pathHash}-vcr-guest-agent`,
         hostname: 'vcr-guest-agent',
+        restart: "no",
         command: 'sh -c "mkdir -p /media/vcr/transient && sleep infinity"',
         networks: ['internal_net', 'external_net'],
         volumes: [`${pathHash}_vcr_shared_data:/media/vcr`]
