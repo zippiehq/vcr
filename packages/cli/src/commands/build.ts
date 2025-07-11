@@ -805,7 +805,11 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     execSync(waitCommand, { stdio: 'inherit' });
     
     console.log('\nDevelopment environment is ready!');
-    console.log(`- Function endpoint: http://localhost:8080 (IPv4) or http://[::1]:8081 (IPv6)`);
+    if (profile === 'dev') {
+      console.log(`- Function endpoint: http://localhost:8080 (IPv4) or http://[::1]:8081 (IPv6)`);
+    } else {
+      console.log(`- Function endpoint: http://localhost:8080`);
+    }
     console.log('- Health check: http://localhost:8080/health');
     console.log('- To stop: vcr down');
     console.log('- To view container logs: vcr logs');
