@@ -13,7 +13,8 @@ FROM base AS runtime
 
 # Install Python 3 runtime (includes dataclasses and other stdlib modules)
 RUN apt-get install -y --no-install-recommends python3-minimal libpython3-stdlib python3-aiohttp && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app
