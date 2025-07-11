@@ -111,6 +111,14 @@ export function checkVcrBuilder() {
       execSync('docker buildx inspect --bootstrap', { stdio: 'inherit' });
       console.log('✅ vcr-builder bootstrapped and ready');
       
+      // Set restart policy to no for the underlying container
+      try {
+        execSync('docker update --restart=no vcr-builder0', { stdio: 'ignore' });
+        console.log('✅ vcr-builder restart policy set to no');
+      } catch (updateErr) {
+        console.log('ℹ️  Could not update vcr-builder restart policy');
+      }
+      
       // Connect to registry network
       try {
         execSync('docker network connect vcr-network vcr-builder0', { stdio: 'ignore' });
@@ -170,7 +178,7 @@ function startLocalRegistry() {
       writeFileSync(configPath, JSON.stringify(registryConfig, null, 2));
       console.log(`✅ Registry config created at: ${configPath}`);
       
-      execSync(`docker run -d -p 5001:5000 --restart=always --name vcr-registry --network vcr-network -v ${configPath}:/etc/docker/registry/config.yml registry:3`, { stdio: 'inherit' });
+      execSync(`docker run -d -p 5001:5000 --restart=no --name vcr-registry --network vcr-network -v ${configPath}:/etc/docker/registry/config.yml registry:3`, { stdio: 'inherit' });
     }
     
     // Connect existing registry to network if not already connected
