@@ -122,6 +122,7 @@ export function generateDockerCompose(imageTag: string, profile: string, imageDi
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
+      ports: ['127.0.0.1:8080:8080', '::1:8081:8080'],
       volumes: [
         `${cacheDir}:/work`,
         `${pathHash}_vcr_shared_data:/media/vcr`
@@ -158,13 +159,6 @@ qemu-system-riscv64 \
       devices: [ "/dev/vsock"],
       privileged: true,
       labels: [
-        'traefik.enable=true',
-        'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
-        'traefik.http.routers.isolated.entrypoints=web',
-        'traefik.http.services.isolated.loadbalancer.server.port=8080',
-        'traefik.http.services.isolated.loadbalancer.server.scheme=http',
-        'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
-        'traefik.http.routers.isolated.middlewares=strip-function',
         `vcr.profile=${profile}`,
         `vcr.image.tag=${imageTag}`,
         `vcr.image.digest=${imageDigest || 'none'}`,
@@ -178,6 +172,7 @@ qemu-system-riscv64 \
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
+      ports: ['127.0.0.1:8080:8080', '::1:8081:8080'],
       volumes: [
         `${cacheDir}:/work`,
         `${pathHash}_vcr_shared_data:/media/vcr`
@@ -203,13 +198,6 @@ qemu-system-riscv64 \
         start_period: '40s'
       },
       labels: [
-        'traefik.enable=true',
-        'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
-        'traefik.http.routers.isolated.entrypoints=web',
-        'traefik.http.services.isolated.loadbalancer.server.port=8080',
-        'traefik.http.services.isolated.loadbalancer.server.scheme=http',
-        'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
-        'traefik.http.routers.isolated.middlewares=strip-function',
         `vcr.profile=${profile}`,
         `vcr.image.tag=${imageTag}`,
         `vcr.image.digest=${imageDigest || 'none'}`,
@@ -224,6 +212,7 @@ qemu-system-riscv64 \
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
+      ports: ['127.0.0.1:8080:8080', '::1:8081:8080'],
       volumes: [`${pathHash}_vcr_shared_data:/media/vcr`],
       restart: "no",
       healthcheck: {
@@ -234,13 +223,6 @@ qemu-system-riscv64 \
         start_period: '40s'
       },
       labels: [
-        'traefik.enable=true',
-        'traefik.http.routers.isolated.rule=PathPrefix(`/function`)',
-        'traefik.http.routers.isolated.entrypoints=web',
-        'traefik.http.services.isolated.loadbalancer.server.port=8080',
-        'traefik.http.services.isolated.loadbalancer.server.scheme=http',
-        'traefik.http.middlewares.strip-function.stripprefix.prefixes=/function',
-        'traefik.http.routers.isolated.middlewares=strip-function',
         `vcr.profile=${profile}`,
         `vcr.image.tag=${imageTag}`,
         `vcr.image.digest=${imageDigest || 'none'}`,
@@ -252,30 +234,6 @@ qemu-system-riscv64 \
   
   const composeConfig = {
     services: {
-      traefik: {
-        image: 'traefik:v2.10',
-        container_name: `${pathHash}-vcr-traefik`,
-        hostname: 'vcr-traefik',
-        restart: "no",
-        command: [
-          '--api.insecure=true',
-          '--api.dashboard=false',
-          '--api.debug=true',
-          '--providers.docker=true',
-          '--providers.docker.exposedbydefault=false',
-          '--entrypoints.web.address=:8080',
-          '--entrypoints.traefik.address=:9000'
-        ],
-        ports: ['8080:8080'],
-        volumes: ['/var/run/docker.sock:/var/run/docker.sock:ro'],
-        networks: ['internal_net', 'external_net'],
-        labels: [
-          'traefik.enable=true',
-          'traefik.http.routers.traefik.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)',
-          'traefik.http.routers.traefik.service=api@internal',
-          'traefik.http.routers.traefik.entrypoints=traefik'
-        ]
-      },
       isolated_service: isolatedServiceConfig,
       internet_service: {
         image: 'alpine',
