@@ -29,6 +29,7 @@ FROM base AS runtime
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get install -y --no-install-recommends curl python3-minimal libpython3-stdlib python3-aiohttp && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     : "Clean up for improving reproducibility (optional)" && \
     rm -rf /var/log/* /var/cache/ldconfig/aux-cache
