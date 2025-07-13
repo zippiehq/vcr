@@ -370,7 +370,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
+          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --ram-length=1024Mi --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
         ];
         
         console.log(`Executing: ${cartesiCommand.join(' ')}`);
