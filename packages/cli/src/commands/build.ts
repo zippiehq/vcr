@@ -59,6 +59,7 @@ export function handleBuildCommand(args: string[]): void {
   let profile = 'dev';
   let cacheDir: string | undefined;
   let forceRebuild = false;
+  let useDepot = false;
   
   // Parse build arguments
   for (let i = 1; i < args.length; i++) {
@@ -91,6 +92,8 @@ export function handleBuildCommand(args: string[]): void {
       }
     } else if (arg === '--force-rebuild') {
       forceRebuild = true;
+    } else if (arg === '--depot') {
+      useDepot = true;
     }
   }
   
@@ -105,7 +108,7 @@ export function handleBuildCommand(args: string[]): void {
     checkRiscv64Support();
   }
   
-  buildImage(imageTag, profile, cacheDir, forceRebuild);
+  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot);
 }
 
 export function handleUpCommand(args: string[]): void {
@@ -118,6 +121,7 @@ export function handleUpCommand(args: string[]): void {
   let cacheDir: string | undefined;
   let forceRebuild = false;
   let forceRestart = false;
+  let useDepot = false;
   
   // Parse up arguments
   for (let i = 1; i < args.length; i++) {
@@ -152,6 +156,8 @@ export function handleUpCommand(args: string[]): void {
       forceRebuild = true;
     } else if (arg === '--restart') {
       forceRestart = true;
+    } else if (arg === '--depot') {
+      useDepot = true;
     }
   }
   
@@ -166,7 +172,7 @@ export function handleUpCommand(args: string[]): void {
     checkRiscv64Support();
   }
   
-  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart);
+  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot);
 }
 
 // Helper functions that need to be copied from cli.ts
@@ -601,10 +607,13 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   }
 }
 
-export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false): string | undefined {
+export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
+  if (useDepot) {
+    console.log(`Using Depot build`);
+  }
   
   // Check if Dockerfile exists
   if (!existsSync(join(currentDir, 'Dockerfile'))) {
@@ -627,25 +636,50 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   const safeImageName = imageTag.replace(/[:/]/g, '-');
   const ociTarPath = join(cacheDir, `${safeImageName}.tar`);
   
-  // Build command - Export to OCI tar and conditionally load into Docker
-  const buildArgs = [
-    'buildx',
-    'build',
-    '--platform', platforms.join(','),
-    '--output', `type=oci,dest=${ociTarPath},name=${imageTag}`,
-    '--provenance=false',
-    '--sbom=false',
-  ];
+  let buildCommand: string;
   
-  // Only load into Docker for dev profile (native platform)
-  if (profile === 'dev') {
-    buildArgs.push('--output', `type=docker,name=${imageTag}`);
+  if (useDepot) {
+    // Use depot build
+    const buildArgs = [
+      'build',
+      '--platform', platforms.join(','),
+      '--provenance=false',
+      '--sbom=false',
+    ];
+    
+    if (profile === 'dev') {
+      // For dev profile, only output to Docker
+      buildArgs.push('--output', `type=docker,name=${imageTag}`);
+    } else {
+      // For test/prod profiles, output to OCI tar for LinuxKit
+      buildArgs.push('--output', `type=oci,dest=${ociTarPath},name=${imageTag}`);
+    }
+    
+    // Add context directory
+    buildArgs.push('.');
+    
+    buildCommand = `depot ${buildArgs.join(' ')}`;
+  } else {
+    // Use docker buildx build
+    const buildArgs = [
+      'buildx',
+      'build',
+      '--platform', platforms.join(','),
+      '--output', `type=oci,dest=${ociTarPath},name=${imageTag}`,
+      '--provenance=false',
+      '--sbom=false',
+    ];
+    
+    // Only load into Docker for dev profile (native platform)
+    if (profile === 'dev') {
+      buildArgs.push('--output', `type=docker,name=${imageTag}`);
+    }
+    
+    // Add context directory
+    buildArgs.push('.');
+    
+    buildCommand = `docker ${buildArgs.join(' ')}`;
   }
-  
-  // Add context directory
-  buildArgs.push('.');
-  
-  const buildCommand = `docker ${buildArgs.join(' ')}`;
     
   console.log(`\n🔧 Executing build command:`);
   console.log(`${buildCommand}\n`);
@@ -657,11 +691,15 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
     });
     console.log(`\n✅ Build completed successfully!`);
-    console.log(`Docker image saved to: ${ociTarPath}`);
-    if (profile === 'dev') {
+    if (useDepot && profile === 'dev') {
       console.log(`Docker image loaded with tag: ${imageTag}`);
     } else {
-      console.log(`Docker image not loaded (${profile} profile uses OCI import)`);
+      console.log(`Docker image saved to: ${ociTarPath}`);
+      if (profile === 'dev') {
+        console.log(`Docker image loaded with tag: ${imageTag}`);
+      } else {
+        console.log(`Docker image not loaded (${profile} profile uses OCI import)`);
+      }
     }
     console.log(`Cache directory: ${cacheDir}`);
     
@@ -679,7 +717,7 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   }
 }
 
-export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false) {
+export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false) {
   console.log('Starting development environment...');
   
   try {
@@ -711,7 +749,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     checkVsockSupport();
     
     // Build the container
-    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild);
+    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot);
     
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     let needsUpdate = false;

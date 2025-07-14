@@ -106,6 +106,7 @@ Build Options:
   --cache-dir <dir>                 Optional path to store exported build metadata
   --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
   --restart                         Force restart containers even if image tag matches (up command only)
+  --depot                           Use depot build instead of docker buildx build
 
 Prune Options:
   --local                           Only clean current project's cache and stop its environment
@@ -126,10 +127,12 @@ Examples:
   vcr build -t web3link/myapp:1.2.3 --profile test     # RISC-V with dev tools
   vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
   vcr build -t web3link/myapp:1.2.3 --force-rebuild    # Force rebuild all artifacts
+  vcr build -t web3link/myapp:1.2.3 --depot            # Use depot build instead of docker buildx
   vcr up                            # Build and run with default tag
   vcr up -t web3link/myapp:1.2.3                      # Build and run dev environment
   vcr up -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
   vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
+  vcr up -t web3link/myapp:1.2.3 --depot              # Use depot build and run
   vcr up --restart                                   # Force restart containers
   vcr down                                             # Stop development environment
   vcr logs                                             # View container logs
