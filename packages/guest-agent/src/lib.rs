@@ -13,7 +13,7 @@ use vsock_protocol::{
     VSOCK_OP_SHUTDOWN,
 };
 
-const CMIO_QUEUE_ID: u16 = 1;
+const CMIO_QUEUE_ID: u16 = 0x27;
 const RW_BUF_SIZE: usize = 4096;
 const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(5);
 
