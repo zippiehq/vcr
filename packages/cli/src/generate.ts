@@ -4,51 +4,47 @@ import { cwd } from 'process';
 import { homedir } from 'os';
 import { getPathHash, getComposeCacheDirectory } from './cli';
 import { sshDebugKey, sshDebugKeyPub } from './keys';
+import { createHash } from 'crypto';
 
-function getCacheDirectory(imageDigest?: string): string {
-  const baseCacheDir = join(homedir(), '.cache', 'vcr');
+function getCacheDirectory(ociTarPath?: string): string {
+  const pathHash = getPathHash();
+  const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
   
-  // Create base cache directory if it doesn't exist
-  if (!existsSync(baseCacheDir)) {
-    mkdirSync(baseCacheDir, { recursive: true });
-  }
-  
-  if (imageDigest) {
-    // Remove 'sha256:' prefix for directory name
-    const digestDir = imageDigest.replace('sha256:', '');
-    const digestCacheDir = join(baseCacheDir, digestDir);
-    
-    // Create digest-specific cache directory if it doesn't exist
-    if (!existsSync(digestCacheDir)) {
-      mkdirSync(digestCacheDir, { recursive: true });
-    }
-    
-    return digestCacheDir;
+  if (ociTarPath) {
+    // Create a hash of the OCI tar path for cache directory
+    const pathHash = createHash('sha256').update(ociTarPath).digest('hex').substring(0, 8);
+    return join(baseCacheDir, pathHash);
   }
   
   return baseCacheDir;
 }
 
-export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir?: string, imageDigest?: string) {
-  const imageReference = imageDigest ? `${imageTag}@${imageDigest}` : imageTag;
+export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir?: string, ociTarPath?: string) {
+  const pathHash = getPathHash();
   
-  // Add net: host for test and prod profiles
-  const netConfig = (profile === 'test' || profile === 'prod') ? '    net: host' : '';
+  // Generate SSH debug keys
+  const sshKeyPath = cacheDir ? join(cacheDir, 'ssh.debug-key') : join(cwd(), 'ssh.debug-key');
+  const sshKeyPubPath = cacheDir ? join(cacheDir, 'ssh.debug-key.pub') : join(cwd(), 'ssh.debug-key.pub');
   
-  // Check for custom guest agent image
-  const guestAgentImage = process.env.CUSTOM_GUEST_AGENT_IMAGE || 'ghcr.io/zippiehq/vcr-guest-agent';
-  // Create SSH debug key files in cache directory
-  if (cacheDir) {
-    // Write debug private key (empty for now, will be filled in later)
-    const debugKeyPath = join(cacheDir, 'ssh.debug-key');
-    writeFileSync(debugKeyPath, sshDebugKey, 'utf8');
-    chmodSync(debugKeyPath, 0o600); // Set 0600 permissions for private key
-    
-    // Write debug public key (empty for now, will be filled in later)
-    const debugPubKeyPath = join(cacheDir, 'ssh.debug-key.pub');
-    writeFileSync(debugPubKeyPath, sshDebugKeyPub, 'utf8');
-    chmodSync(debugPubKeyPath, 0o644); // Set 0644 permissions for public key
+  if (!existsSync(sshKeyPath)) {
+    writeFileSync(sshKeyPath, sshDebugKey);
+    chmodSync(sshKeyPath, 0o600);
   }
+  
+  if (!existsSync(sshKeyPubPath)) {
+    writeFileSync(sshKeyPubPath, sshDebugKeyPub);
+  }
+  
+  // Use the image tag directly since the OCI image is loaded into Docker
+  const imageReference = imageTag;
+  
+  // Guest agent image
+  const guestAgentImage = 'ghcr.io/zippiehq/vcr-guest-agent:latest';
+  
+  // Network configuration
+  const netConfig = profile === 'prod' 
+    ? 'net: host' 
+    : 'net: host';
   
   const yamlConfig = `init:
   - ghcr.io/zippiehq/vcr-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
@@ -77,7 +73,7 @@ services:
     devices:
       - path: all
   - name: app
-    image: localhost:5001/${imageReference}
+    image: ${imageReference}
     capabilities:
       - CAP_CHOWN
       - CAP_DAC_OVERRIDE
@@ -106,12 +102,12 @@ files:
   return yamlPath;
 }
 
-export function generateDockerCompose(imageTag: string, profile: string, imageDigest?: string) {
-  // Use tag + SHA256 format if digest is available, otherwise just the tag
-  const imageReference = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
+export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string) {
+  // Use the image tag directly since the OCI image is loaded into Docker
+  const imageReference = imageTag;
   
   const pathHash = getPathHash();
-  const cacheDir = getCacheDirectory(imageDigest);
+  const cacheDir = getCacheDirectory(ociTarPath);
   
   // For test and prod profiles, use snapshot-builder with different commands
   let isolatedServiceConfig;
@@ -165,7 +161,7 @@ qemu-system-riscv64 \
         'traefik.http.services.isolated.loadbalancer.server.scheme=http',
         `vcr.profile=${profile}`,
         `vcr.image.tag=${imageTag}`,
-        `vcr.image.digest=${imageDigest || 'none'}`,
+        `vcr.image.path=${ociTarPath || 'none'}`,
         `vcr.build.timestamp=${new Date().toISOString()}`,
         `vcr.path.hash=${pathHash}`
       ]
@@ -208,7 +204,7 @@ qemu-system-riscv64 \
         'traefik.http.services.isolated.loadbalancer.server.scheme=http',
         `vcr.profile=${profile}`,
         `vcr.image.tag=${imageTag}`,
-        `vcr.image.digest=${imageDigest || 'none'}`,
+        `vcr.image.path=${ociTarPath || 'none'}`,
         `vcr.build.timestamp=${new Date().toISOString()}`,
         `vcr.path.hash=${pathHash}`
       ]
@@ -237,7 +233,7 @@ qemu-system-riscv64 \
         'traefik.http.services.isolated.loadbalancer.server.scheme=http',
         `vcr.profile=${profile}`,
         `vcr.image.tag=${imageTag}`,
-        `vcr.image.digest=${imageDigest || 'none'}`,
+        `vcr.image.path=${ociTarPath || 'none'}`,
         `vcr.build.timestamp=${new Date().toISOString()}`,
         `vcr.path.hash=${pathHash}`
       ]

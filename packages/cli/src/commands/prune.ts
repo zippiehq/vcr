@@ -64,16 +64,6 @@ export function pruneVcr() {
       console.log('ℹ️  Could not stop development environment');
     }
     
-    // Stop and remove vcr-registry
-    console.log('Stopping vcr-registry...');
-    try {
-      execSync('docker stop vcr-registry', { stdio: 'ignore' });
-      execSync('docker rm vcr-registry', { stdio: 'ignore' });
-      console.log('✅ vcr-registry stopped and removed');
-    } catch (err) {
-      console.log('ℹ️  vcr-registry not running or already removed');
-    }
-    
     // Remove vcr-builder
     console.log('Removing vcr-builder...');
     try {
@@ -81,15 +71,6 @@ export function pruneVcr() {
       console.log('✅ vcr-builder removed');
     } catch (err) {
       console.log('ℹ️  vcr-builder not found or already removed');
-    }
-    
-    // Remove vcr-network
-    console.log('Removing vcr-network...');
-    try {
-      execSync('docker network rm vcr-network', { stdio: 'ignore' });
-      console.log('✅ vcr-network removed');
-    } catch (err) {
-      console.log('ℹ️  vcr-network not found or already removed');
     }
     
     // Wipe cache directory

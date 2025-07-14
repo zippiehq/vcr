@@ -15,7 +15,6 @@ import {
 import { 
   checkBuildxAvailable, 
   checkVcrBuilder, 
-  checkLocalRegistry, 
   checkRiscv64Support 
 } from '../checks';
 
@@ -54,7 +53,7 @@ function needsProfileChange(currentProfile: string | null, requestedProfile: str
 export function handleBuildCommand(args: string[]): void {
   checkBuildxAvailable();
   checkVcrBuilder();
-  checkLocalRegistry();
+  // Removed: checkLocalRegistry();
   
   let imageTag: string | undefined;
   let profile = 'dev';
@@ -112,22 +111,22 @@ export function handleBuildCommand(args: string[]): void {
 export function handleUpCommand(args: string[]): void {
   checkBuildxAvailable();
   checkVcrBuilder();
-  checkLocalRegistry();
+  // Removed: checkLocalRegistry();
   
-  let runImageTag: string | undefined;
-  let runProfile = 'dev';
-  let runCacheDir: string | undefined;
-  let runForceRebuild = false;
-  let runForceRestart = false;
+  let imageTag: string | undefined;
+  let profile = 'dev';
+  let cacheDir: string | undefined;
+  let forceRebuild = false;
+  let forceRestart = false;
   
-  // Parse run arguments
+  // Parse up arguments
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
     const nextArg = args[i + 1];
     
     if (arg === '-t' || arg === '--tag') {
       if (nextArg) {
-        runImageTag = nextArg;
+        imageTag = nextArg;
         i++; // Skip next argument
       } else {
         console.error('Error: -t/--tag requires a value');
@@ -135,7 +134,7 @@ export function handleUpCommand(args: string[]): void {
       }
     } else if (arg === '--profile') {
       if (nextArg) {
-        runProfile = nextArg;
+        profile = nextArg;
         i++; // Skip next argument
       } else {
         console.error('Error: --profile requires a value');
@@ -143,53 +142,42 @@ export function handleUpCommand(args: string[]): void {
       }
     } else if (arg === '--cache-dir') {
       if (nextArg) {
-        runCacheDir = nextArg;
+        cacheDir = nextArg;
         i++; // Skip next argument
       } else {
         console.error('Error: --cache-dir requires a value');
         process.exit(1);
       }
     } else if (arg === '--force-rebuild') {
-      runForceRebuild = true;
+      forceRebuild = true;
     } else if (arg === '--restart') {
-      runForceRestart = true;
+      forceRestart = true;
     }
   }
   
-  if (!runImageTag) {
+  if (!imageTag) {
     const pathHash = getPathHash();
-    runImageTag = `vcr-build-${pathHash}:latest`;
-    console.log(`No tag provided, using default: ${runImageTag}`);
+    imageTag = `vcr-build-${pathHash}:latest`;
+    console.log(`No tag provided, using default: ${imageTag}`);
   }
   
   // Check RISC-V support if needed
-  if (runProfile !== 'dev') {
+  if (profile !== 'dev') {
     checkRiscv64Support();
   }
   
-  runDevEnvironment(runImageTag, runProfile, runCacheDir, runForceRebuild, runForceRestart);
+  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart);
 }
 
 // Helper functions that need to be copied from cli.ts
-function getCacheDirectory(imageDigest?: string): string {
-  const baseCacheDir = join(homedir(), '.cache', 'vcr');
+function getCacheDirectory(imageTag?: string): string {
+  const pathHash = getPathHash();
+  const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
   
-  // Create base cache directory if it doesn't exist
-  if (!existsSync(baseCacheDir)) {
-    mkdirSync(baseCacheDir, { recursive: true });
-  }
-  
-  if (imageDigest) {
-    // Remove 'sha256:' prefix for directory name
-    const digestDir = imageDigest.replace('sha256:', '');
-    const digestCacheDir = join(baseCacheDir, digestDir);
-    
-    // Create digest-specific cache directory if it doesn't exist
-    if (!existsSync(digestCacheDir)) {
-      mkdirSync(digestCacheDir, { recursive: true });
-    }
-    
-    return digestCacheDir;
+  if (imageTag) {
+    // Create a hash of the image tag for cache directory
+    const imageHash = createHash('sha256').update(imageTag).digest('hex').substring(0, 8);
+    return join(baseCacheDir, imageHash);
   }
   
   return baseCacheDir;
@@ -225,27 +213,17 @@ function getNativePlatform(): string {
   }
 }
 
-function verifyRegistryConnectivity() {
-  try {
-    execSync('curl -f http://localhost:5001/v2/', { stdio: 'ignore' });
-  } catch (err) {
-    console.error('Error: Cannot connect to registry at localhost:5001');
-    console.error('Please ensure vcr-registry is running');
-    process.exit(1);
-  }
-}
-
-function getRegistryUrl(context: 'host' | 'docker' = 'docker'): string {
-  // For host access (from CLI script), use localhost:5001
-  // For Docker network access (from containers), use vcr-registry:5000
-  return context === 'host' ? 'localhost:5001' : 'vcr-registry:5000';
-}
-
-function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: string, cacheDir?: string, forceRebuild = false) {
+function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: string, cacheDir?: string, forceRebuild = false) {
   console.log('Building LinuxKit image...');
   
-  if (imageDigest) {
-    console.log(`Using image digest: ${imageDigest}`);
+  if (ociTarPath) {
+    console.log(`Using OCI image: ${ociTarPath}`);
+    
+    // Import OCI image into LinuxKit cache
+    console.log('Importing OCI image into LinuxKit cache...');
+    const importCommand = `linuxkit cache import ${ociTarPath}`;
+    execSync(importCommand, { stdio: 'inherit' });
+    console.log('✅ OCI image imported into LinuxKit cache');
   }
   
   const currentDir = cwd();
@@ -604,7 +582,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, imageDigest?: str
   }
 }
 
-export function buildImage(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false): string | undefined {
+export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
@@ -618,31 +596,33 @@ export function buildImage(imageTag: string, profile: string, cacheDir?: string,
   // Resolve platforms
   const platforms = resolvePlatforms(profile);
   
-  // Construct full image name with local registry
-  const fullImageName = `vcr-registry:5000/${imageTag}`;
+  // Get cache directory based on image tag
+  const cacheDir = getCacheDirectory(imageTag);
   
-  // Build command
+  // Create cache directory if it doesn't exist
+  if (!existsSync(cacheDir)) {
+    mkdirSync(cacheDir, { recursive: true });
+  }
+  
+  // Create OCI tar file path - always use cache directory
+  const safeImageName = imageTag.replace(/[:/]/g, '-');
+  const ociTarPath = join(cacheDir, `${safeImageName}.tar`);
+  
+  // Build command - Export to OCI tar AND load into Docker simultaneously
   const buildArgs = [
     'buildx',
     'build',
     '--builder', 'vcr-builder',
     '--platform', platforms.join(','),
-    '--push',
-    '-t', fullImageName,
+    '--output', `type=oci,dest=${ociTarPath},name=${imageTag}`,
+    '--output', `type=docker,name=${imageTag}`,
     '--provenance=false',
     '--sbom=false',
-//   '--debug'
   ];
   
-  // Add cache directory if specified
-  if (cacheDir) {
-    buildArgs.push('--cache-from', `type=local,src=${cacheDir}`);
-    buildArgs.push('--cache-to', `type=local,dest=${cacheDir},mode=max`);
-  }
-  
-  // Add reproducible build arguments
-  
-  // Add GitHub Container Registry cache for RISC-V 64 builds
+  // Add cache directory for build cache
+  buildArgs.push('--cache-from', `type=local,src=${cacheDir}`);
+  buildArgs.push('--cache-to', `type=local,dest=${cacheDir},mode=max`);
   
   // Add context directory
   buildArgs.push('.');
@@ -653,39 +633,24 @@ export function buildImage(imageTag: string, profile: string, cacheDir?: string,
   console.log(`${buildCommand}\n`);
   
   try {
-    verifyRegistryConnectivity();
     execSync(buildCommand, { 
       stdio: 'inherit', 
       cwd: currentDir,
       env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
     });
     console.log(`\n✅ Build completed successfully!`);
-    console.log(`Image pushed to: ${getRegistryUrl('docker')}/${imageTag}`);
-    
-    // Capture the image digest after successful build
-    let imageDigest: string | undefined;
-    try {
-      const localImageName = `${getRegistryUrl('host')}/${imageTag}`;
-      const digestOutput = execSync(`docker buildx imagetools inspect ${localImageName} --format '{{json .}}'`, { encoding: 'utf8' });
-      const digestData = JSON.parse(digestOutput);
-      imageDigest = digestData.manifest.digest;
-      console.log(`Image digest: ${imageDigest}`);
-    } catch (digestErr) {
-      console.log('Could not retrieve image digest');
-    }
-    
-    // Get cache directory based on image digest
-    const cacheDir = getCacheDirectory(imageDigest);
+    console.log(`Docker image saved to: ${ociTarPath}`);
+    console.log(`Docker image loaded with tag: ${imageTag}`);
     console.log(`Cache directory: ${cacheDir}`);
     
     // For test and prod profiles, also build LinuxKit image
     if (profile === 'test' || profile === 'prod') {
       console.log(`\n🔄 Building LinuxKit image for ${profile} profile...`);
-      const yamlPath = generateLinuxKitYaml(imageTag, profile, cacheDir, imageDigest);
-      buildLinuxKitImage(yamlPath, profile, imageDigest, cacheDir, forceRebuild);
+      const yamlPath = generateLinuxKitYaml(imageTag, profile, cacheDir, ociTarPath);
+      buildLinuxKitImage(yamlPath, profile, ociTarPath, cacheDir, forceRebuild);
     }
     
-    return imageDigest;
+    return ociTarPath;
   } catch (err) {
     console.error('Error building image:', err);
     process.exit(1);
@@ -724,7 +689,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     checkVsockSupport();
     
     // Build the container
-    const imageDigest = buildImage(imageTag, profile, cacheDir, forceRebuild);
+    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild);
     
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     let needsUpdate = false;
@@ -757,7 +722,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
         const currentImage = composeConfig.services?.isolated_service?.image;
         
         if (currentImage) {
-          const expectedImage = imageDigest ? `localhost:5001/${imageTag}@${imageDigest}` : `localhost:5001/${imageTag}`;
+          const expectedImage = imageTag; // Use the image tag directly since it's loaded in Docker
           if (currentImage !== expectedImage) {
             console.log(`🔄 Image tag changed from ${currentImage} to ${expectedImage}`);
             needsUpdate = true;
@@ -775,7 +740,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     
     // Generate or update Docker Compose configuration
     if (needsUpdate) {
-      generateDockerCompose(imageTag, profile, imageDigest);
+      generateDockerCompose(imageTag, profile, ociTarPath);
       console.log(`Generated Docker Compose config: ${composePath}`);
     }
     
