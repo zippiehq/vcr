@@ -637,6 +637,14 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   console.log(`Profile: ${profile}`);
   if (useDepot) {
     console.log(`Using Depot build`);
+  } else {
+    // Check if depot binary is available and suggest using it
+    try {
+      execSync('depot --version', { stdio: 'ignore' });
+      console.log('💡 Tip: depot binary found in PATH. Use --depot for faster builds!');
+    } catch (err) {
+      // depot not available, ignore
+    }
   }
   
   // Check if Dockerfile exists
