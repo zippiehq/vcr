@@ -4,10 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-host-agent = { path = "../host-agent" }
-guest-agent = { path = "../guest-agent" }
 tokio = { version = "1", features = ["full"] }
-log = "0.4.21"
-env_logger = "0.11.3"
+cartesi-machine = { git = "https://github.com/zippiehq/dave", rev = "4e56e1c0be31791cea883812b041486fe5ad429f", features = ["download_uarch"] }
+log = "0.4"
+env_logger = "0.10"
 colored = "2.1.0"
-cmio = { path = "../guest-agent/crates/cmio", features = ["mock_cmio"] }
+vsock = "0.5.0"
+vsock-protocol = { path = "../vsock-protocol" }
+
+[[bin]]
+name = "runner"
+path = "src/main.rs"
