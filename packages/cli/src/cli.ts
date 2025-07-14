@@ -107,6 +107,7 @@ Build Options:
   --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
   --restart                         Force restart containers even if image tag matches (up command only)
   --depot                           Use depot build instead of docker buildx build
+  --no-depot                        Force use docker buildx build even if depot.json is present
 
 Prune Options:
   --local                           Only clean current project's cache and stop its environment
@@ -162,6 +163,8 @@ Notes:
   - Container paths should start with /app/ to avoid ambiguity
   - Default image tags are based on the current directory path hash
   - vcr up automatically detects image changes and restarts containers when needed
+  - If depot.json is present in the current directory, depot build is used automatically
+  - Use --no-depot to force docker buildx build even when depot.json is present
   - Logs behavior varies by profile:
     * dev: vcr logs shows container logs, vcr logs --system shows all compose logs
     * test/prod: vcr logs shows /var/log/app.log via SSH, vcr logs --system shows container logs

@@ -60,6 +60,7 @@ export function handleBuildCommand(args: string[]): void {
   let cacheDir: string | undefined;
   let forceRebuild = false;
   let useDepot = false;
+  let noDepot = false;
   
   // Parse build arguments
   for (let i = 1; i < args.length; i++) {
@@ -94,6 +95,17 @@ export function handleBuildCommand(args: string[]): void {
       forceRebuild = true;
     } else if (arg === '--depot') {
       useDepot = true;
+    } else if (arg === '--no-depot') {
+      noDepot = true;
+    }
+  }
+  
+  // Auto-detect depot.json if neither --depot nor --no-depot was specified
+  if (!useDepot && !noDepot) {
+    const depotJsonPath = join(cwd(), 'depot.json');
+    if (existsSync(depotJsonPath)) {
+      useDepot = true;
+      console.log('📦 depot.json detected, using depot build');
     }
   }
   
@@ -122,6 +134,7 @@ export function handleUpCommand(args: string[]): void {
   let forceRebuild = false;
   let forceRestart = false;
   let useDepot = false;
+  let noDepot = false;
   
   // Parse up arguments
   for (let i = 1; i < args.length; i++) {
@@ -158,6 +171,17 @@ export function handleUpCommand(args: string[]): void {
       forceRestart = true;
     } else if (arg === '--depot') {
       useDepot = true;
+    } else if (arg === '--no-depot') {
+      noDepot = true;
+    }
+  }
+  
+  // Auto-detect depot.json if neither --depot nor --no-depot was specified
+  if (!useDepot && !noDepot) {
+    const depotJsonPath = join(cwd(), 'depot.json');
+    if (existsSync(depotJsonPath)) {
+      useDepot = true;
+      console.log('📦 depot.json detected, using depot build');
     }
   }
   
