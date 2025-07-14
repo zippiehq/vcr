@@ -7,7 +7,7 @@ VCR is a CLI tool for building and running **verifiable, deterministic container
 
 ## 📦 **Prerequisites**
 - Docker and buildx installed
-- VCR automatically sets up `vcr-builder` and `vcr-registry` on first run
+- VCR automatically installs RISC-V binfmt emulation on first run
 - RISC-V 64-bit emulation support (auto-installed if needed)
 
 ## 🎯 **Core Commands**

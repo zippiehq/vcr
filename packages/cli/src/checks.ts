@@ -52,33 +52,8 @@ export function checkBuildxAvailable() {
 }
 
 export function checkVcrBuilder() {
-  try {
-    execSync('docker buildx inspect vcr-builder', { stdio: 'ignore' });
-  } catch (err) {
-    console.log('⚠️  vcr-builder not found. Creating it...');
-    try {
-      // Create builder without custom networking or registry config
-      const createCommand = 'docker buildx create --name vcr-builder --use --driver docker-container';
-      
-      execSync(createCommand, { stdio: 'inherit' });
-      console.log('✅ vcr-builder created successfully');
-      
-      console.log('Bootstrapping vcr-builder...');
-      execSync('docker buildx inspect --bootstrap', { stdio: 'inherit' });
-      console.log('✅ vcr-builder bootstrapped and ready');
-      
-      // Set restart policy to no for the underlying container
-      try {
-        execSync('docker update --restart=no vcr-builder0', { stdio: 'ignore' });
-        console.log('✅ vcr-builder restart policy set to no');
-      } catch (updateErr) {
-        console.log('ℹ️  Could not update vcr-builder restart policy');
-      }
-    } catch (createErr) {
-      console.error('Error creating vcr-builder:', createErr);
-      process.exit(1);
-    }
-  }
+  // No longer needed - using default buildx builder
+  // This function is kept for backward compatibility but does nothing
 }
 
 export function checkRiscv64Support() {

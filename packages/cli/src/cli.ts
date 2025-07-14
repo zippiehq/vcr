@@ -174,7 +174,7 @@ Notes:
 
 Prerequisites:
   - Docker and buildx installed
-  - vcr-builder and vcr-registry will be created/started automatically if needed
+  - RISC-V binfmt emulation will be installed automatically if needed
 `);
 }
 

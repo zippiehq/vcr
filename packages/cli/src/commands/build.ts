@@ -631,7 +631,6 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   const buildArgs = [
     'buildx',
     'build',
-    '--builder', 'vcr-builder',
     '--platform', platforms.join(','),
     '--output', `type=oci,dest=${ociTarPath},name=${imageTag}`,
     '--provenance=false',

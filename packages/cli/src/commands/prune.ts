@@ -64,14 +64,7 @@ export function pruneVcr() {
       console.log('ℹ️  Could not stop development environment');
     }
     
-    // Remove vcr-builder
-    console.log('Removing vcr-builder...');
-    try {
-      execSync('docker buildx rm vcr-builder', { stdio: 'ignore' });
-      console.log('✅ vcr-builder removed');
-    } catch (err) {
-      console.log('ℹ️  vcr-builder not found or already removed');
-    }
+    // vcr-builder no longer used - using default buildx builder
     
     // Wipe cache directory
     console.log('Wiping cache directory...');
