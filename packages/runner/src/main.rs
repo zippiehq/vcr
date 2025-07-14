@@ -1,79 +1,143 @@
-use cmio::CmioIoDriver;
 use colored::*;
 use env_logger::Builder;
-use log::LevelFilter;
-use log::{error, info};
+use log::{info, LevelFilter};
+use std::error::Error;
 use std::io::Write;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::path::Path;
 
-#[tokio::main]
-async fn main() {
+use cartesi_machine::{
+    config::runtime::RuntimeConfig,
+    error::MachineError,
+    machine::Machine,
+    types::{
+        cmio::{AutomaticReason, CmioRequest, CmioResponseReason, ManualReason},
+        BreakReason,
+    },
+};
+use std::thread::sleep;
+use std::time::Duration;
+use vsock_protocol::VSOCK_OP_RESPONSE;
+use vsock_protocol::{Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_TYPE_STREAM};
+
+const MACHINE_PATH: &str = "../../vc-cm-vsock-machine-v2";
+
+const HOST_CID: u32 = 3;
+const GUEST_CID: u32 = 1;
+const HOST_PORT: u32 = 1025;
+const GUEST_PORT: u32 = 8022;
+
+fn setup_logger() {
     let mut builder = Builder::new();
-
     builder
         .format(|buf, record| {
-            let timestamp = buf.timestamp();
-            let level = record.level();
-            let message = record.args();
-
-            match record.target() {
-                "guest" => writeln!(
-                    buf,
-                    "{} [{}] - {}",
-                    timestamp,
-                    level,
-                    message.to_string().green()
-                ),
-                "host" => writeln!(
-                    buf,
-                    "{} [{}] - {}",
-                    timestamp,
-                    level,
-                    message.to_string().blue()
-                ),
-                _ => writeln!(buf, "{} [{}] - {}", timestamp, level, message),
-            }
+            writeln!(
+                buf,
+                "{} [{}] - {}",
+                buf.timestamp(),
+                record.level(),
+                record.args().to_string().blue()
+            )
         })
         .filter(None, LevelFilter::Info)
         .init();
+}
 
+fn run_machine_until_yield(machine: &mut Machine) -> Result<BreakReason, MachineError> {
+    loop {
+        let reason = machine.run(u64::MAX)?;
+        if machine.iflags_y()? {
+            info!("Machine yielded for CMIO request.");
+            return Ok(reason);
+        } else {
+            info!("Machine yielded with reason: {:?}, continuing.", reason);
+        }
+    }
+}
+
+fn send_connect_request(machine: &mut Machine) -> Result<(), Box<dyn Error>> {
+    info!("Crafting vsock connection request for port {}", GUEST_PORT);
+
+    let hdr = VirtioVsockHdr {
+        src_cid: HOST_CID,
+        dst_cid: GUEST_CID,
+        src_port: HOST_PORT,
+        dst_port: GUEST_PORT,
+        len: 0,
+        type_: VSOCK_TYPE_STREAM,
+        op: VSOCK_OP_REQUEST,
+        flags: 0,
+        buf_alloc: 0,
+        fwd_cnt: 0,
+    };
+
+    let packet = Packet::new(hdr, vec![]);
+    let packet_bytes = packet.to_bytes();
+
+    info!("Sending vsock connection request packet");
+    machine.send_cmio_response(CmioResponseReason::Advance, &packet_bytes)?;
+    Ok(())
+}
+
+fn receive_and_log_response(machine: &mut Machine) -> Result<Packet, Box<dyn Error>> {
+    let request = machine.receive_cmio_request()?;
+    info!("Received a CMIO request from guest.");
+
+    let cmio_data = match request {
+        CmioRequest::Automatic(AutomaticReason::TxOutput { data }) => Some(data),
+        CmioRequest::Manual(ManualReason::GIO { data, .. }) => Some(data),
+        _ => {
+            info!("Received CMIO request without data payload: {:?}", request);
+            None
+        }
+    };
+
+    if let Some(data) = cmio_data {
+        if data.len() > 0 {
+            match Packet::from_bytes(&data) {
+                Ok(packet) => {
+                    info!("Successfully parsed vsock packet from response: {:?}", packet);
+                    let response_str = String::from_utf8_lossy(packet.payload());
+                    info!(
+                        "--- GUEST RESPONSE ---\n{}\n----------------------",
+                        response_str
+                    );
+                    return Ok(packet);
+                }
+                Err(e) => {
+                    info!("Failed to parse vsock packet from CMIO data: {:?}", e);
+                    info!("Raw CMIO data (bytes): {:?}", data);
+                }
+            }
+        } else {
+            info!("No data received from guest.");
+        }
+    }
+
+    Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No packet received")))
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    setup_logger();
     info!("START RUNNER");
     info!("________________________________________________________");
-    let driver = Arc::new(Mutex::new(CmioIoDriver::new().unwrap()));
-    let driver_clone1 = driver.clone();
-    let driver_clone2 = driver.clone();
-    let driver_clone3 = driver.clone();
 
-    // Simulate two connections
-    let host_agent_handle1 = tokio::spawn(async move {
-        if let Err(e) = host_agent::run_agent(driver_clone1, 1, 1025) {
-            error!("Host agent 1 failed: {}", e);
-        }
-    });
+    let mut machine =
+        Machine::load(Path::new(MACHINE_PATH), &RuntimeConfig::default())?;
 
-    let host_agent_handle2 = tokio::spawn(async move {
-        if let Err(e) = host_agent::run_agent(driver_clone2, 1, 1026) {
-            error!("Host agent 2 failed: {}", e);
-        }
-    });
+    run_machine_until_yield(&mut machine)?;
 
-    let guest_agent_handle = tokio::spawn(async move {
-        if let Err(e) = guest_agent::run_agent(driver_clone3) {
-            error!("Guest agent failed: {}", e);
-        }
-    });
-
-    let (res1, res2, res3) =
-        tokio::join!(host_agent_handle1, host_agent_handle2, guest_agent_handle);
-
-    if let Err(e) = res1 {
-        error!("Host agent 1 task failed to execute: {}", e);
+    for i in 0..200 {
+        info!("Waiting for guest to connect... {}", i);
+     
+    
+        send_connect_request(&mut machine)?;
+    
+        info!("Running machine to process request and get response...");
+        run_machine_until_yield(&mut machine)?;
+    
+        let packet = receive_and_log_response(&mut machine);
+        sleep(Duration::from_secs(1));
     }
-    if let Err(e) = res2 {
-        error!("Host agent 2 task failed to execute: {}", e);
-    }
-    if let Err(e) = res3 {
-        error!("Guest agent task failed to execute: {}", e);
-    }
+    Ok(())
 }
