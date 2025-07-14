@@ -627,17 +627,21 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   const safeImageName = imageTag.replace(/[:/]/g, '-');
   const ociTarPath = join(cacheDir, `${safeImageName}.tar`);
   
-  // Build command - Export to OCI tar AND load into Docker simultaneously
+  // Build command - Export to OCI tar and conditionally load into Docker
   const buildArgs = [
     'buildx',
     'build',
     '--builder', 'vcr-builder',
     '--platform', platforms.join(','),
     '--output', `type=oci,dest=${ociTarPath},name=${imageTag}`,
-    '--output', `type=docker,name=${imageTag}`,
     '--provenance=false',
     '--sbom=false',
   ];
+  
+  // Only load into Docker for dev profile (native platform)
+  if (profile === 'dev') {
+    buildArgs.push('--output', `type=docker,name=${imageTag}`);
+  }
   
   // Add context directory
   buildArgs.push('.');
@@ -655,7 +659,11 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
     });
     console.log(`\n✅ Build completed successfully!`);
     console.log(`Docker image saved to: ${ociTarPath}`);
-    console.log(`Docker image loaded with tag: ${imageTag}`);
+    if (profile === 'dev') {
+      console.log(`Docker image loaded with tag: ${imageTag}`);
+    } else {
+      console.log(`Docker image not loaded (${profile} profile uses OCI import)`);
+    }
     console.log(`Cache directory: ${cacheDir}`);
     
     // For test and prod profiles, also build LinuxKit image
