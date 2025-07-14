@@ -755,7 +755,9 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     
     // Generate or update Docker Compose configuration
     if (needsUpdate) {
-      generateDockerCompose(imageTag, profile, ociTarPath);
+      // Get the cache directory that was used during the build
+      const buildCacheDir = getCacheDirectory(imageTag);
+      generateDockerCompose(imageTag, profile, ociTarPath, buildCacheDir);
       console.log(`Generated Docker Compose config: ${composePath}`);
     }
     

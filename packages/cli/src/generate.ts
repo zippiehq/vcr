@@ -11,9 +11,14 @@ function getCacheDirectory(ociTarPath?: string): string {
   const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
   
   if (ociTarPath) {
-    // Create a hash of the OCI tar path for cache directory
-    const pathHash = createHash('sha256').update(ociTarPath).digest('hex').substring(0, 8);
-    return join(baseCacheDir, pathHash);
+    // Extract the image tag from the OCI tar path to match build.ts logic
+    // The OCI tar path format is: /path/to/cache/image-tag.tar
+    const fileName = ociTarPath.split('/').pop() || '';
+    const imageTag = fileName.replace('.tar', '');
+    
+    // Create a hash of the image tag for cache directory (same as build.ts)
+    const imageHash = createHash('sha256').update(imageTag).digest('hex').substring(0, 8);
+    return join(baseCacheDir, imageHash);
   }
   
   return baseCacheDir;
@@ -98,12 +103,13 @@ files:
   return yamlPath;
 }
 
-export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string) {
+export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string, cacheDir?: string) {
   // Use the image tag directly since the OCI image is loaded into Docker
   const imageReference = imageTag;
   
   const pathHash = getPathHash();
-  const cacheDir = getCacheDirectory(ociTarPath);
+  // Use the provided cache directory or fall back to calculating it
+  const finalCacheDir = cacheDir || getCacheDirectory(ociTarPath);
   
   // For test and prod profiles, use snapshot-builder with different commands
   let isolatedServiceConfig;
@@ -115,7 +121,7 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
       volumes: [
-        `${cacheDir}:/work`,
+        `${finalCacheDir}:/work`,
         `${pathHash}_vcr_shared_data:/media/vcr`
       ],
       command: [
@@ -169,7 +175,7 @@ qemu-system-riscv64 \
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
       volumes: [
-        `${cacheDir}:/work`,
+        `${finalCacheDir}:/work`,
         `${pathHash}_vcr_shared_data:/media/vcr`
       ],
       command: [
@@ -289,6 +295,8 @@ qemu-system-riscv64 \
     }
   };
   
+  // Write the Docker Compose file to the base directory (where other functions expect it)
+  // but the volume mounts point to the subdirectory where build artifacts are stored
   const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
   writeFileSync(composePath, JSON.stringify(composeConfig, null, 2));
   return composePath;
