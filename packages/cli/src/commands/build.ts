@@ -218,12 +218,6 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   
   if (ociTarPath) {
     console.log(`Using OCI image: ${ociTarPath}`);
-    
-    // Import OCI image into LinuxKit cache
-    console.log('Importing OCI image into LinuxKit cache...');
-    const importCommand = `linuxkit cache import ${ociTarPath}`;
-    execSync(importCommand, { stdio: 'inherit' });
-    console.log('✅ OCI image imported into LinuxKit cache');
   }
   
   const currentDir = cwd();
@@ -262,6 +256,31 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
       const linuxkitCacheDir = join(homedir(), '.cache', 'vcr', 'linuxkit-cache');
       if (!existsSync(linuxkitCacheDir)) {
         mkdirSync(linuxkitCacheDir, { recursive: true });
+      }
+      
+      // Import OCI image into LinuxKit cache if provided
+      if (ociTarPath && existsSync(ociTarPath)) {
+        console.log('Importing OCI image into LinuxKit cache...');
+        
+        // Convert host path to container path
+        const ociTarFileName = ociTarPath.split('/').pop();
+        const containerOciTarPath = `/cache/${ociTarFileName}`;
+        
+        const importCommand = [
+          'docker', 'run', '--rm',
+          '--user', `${uid}:${gid}`,
+          '-e', 'HOME=/cache',
+          '-v', `${currentDir}:/work`,
+          '-v', `${cacheDir}:/cache`,
+          '-v', `${linuxkitCacheDir}:/home/user/.linuxkit/cache`,
+          '-w', '/cache',
+          imageName,
+          'cache', 'import', containerOciTarPath
+        ];
+        
+        console.log(`Executing: ${importCommand.join(' ')}`);
+        execSync(importCommand.join(' '), { stdio: 'inherit', cwd: currentDir });
+        console.log('✅ OCI image imported into LinuxKit cache');
       }
       
     const command = [
@@ -619,10 +638,6 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
     '--provenance=false',
     '--sbom=false',
   ];
-  
-  // Add cache directory for build cache
-  buildArgs.push('--cache-from', `type=local,src=${cacheDir}`);
-  buildArgs.push('--cache-to', `type=local,dest=${cacheDir},mode=max`);
   
   // Add context directory
   buildArgs.push('.');

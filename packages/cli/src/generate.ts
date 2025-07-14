@@ -36,6 +36,7 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   }
   
   // Use the image tag directly since the OCI image is loaded into Docker
+  // LinuxKit will resolve this through its cache after import
   const imageReference = imageTag;
   
   // Guest agent image
