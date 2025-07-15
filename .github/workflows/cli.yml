@@ -91,7 +91,7 @@ jobs:
         run: |
           cd packages/sample-python
           
-          # Test each profile with comprehensive command testing
+          # Test each profile with appropriate command testing
           for profile in dev stage stage-release prod prod-debug; do
             echo "=== Testing $profile profile ==="
             
@@ -103,20 +103,34 @@ jobs:
             # Wait a moment for the environment to be ready
             sleep 10
             
-            # Test logs command (both application and system logs)
-            echo "Testing logs command..."
-            node ../../packages/cli/dist/cli.js logs && echo "Application logs test completed"
-            node ../../packages/cli/dist/cli.js logs --system && echo "System logs test completed"
-            
-            # Test exec command (both container and system mode)
-            echo "Testing exec command..."
-            node ../../packages/cli/dist/cli.js exec "echo 'Hello from container'" && echo "Container exec test completed"
-            node ../../packages/cli/dist/cli.js exec --system "echo 'Hello from system'" && echo "System exec test completed"
-            
-            # Test cat command
-            echo "Testing cat command..."
-            node ../../packages/cli/dist/cli.js exec "echo 'test content' > /tmp/test.txt" && echo "Creating test file completed"
-            node ../../packages/cli/dist/cli.js cat /tmp/test.txt && echo "Cat test completed"
+            # Determine if this profile has debug tools
+            if [[ "$profile" == "dev" || "$profile" == "stage" || "$profile" == "prod-debug" ]]; then
+              echo "Profile $profile has debug tools - testing all commands"
+              
+              # Test logs command (both application and system logs)
+              echo "Testing logs command..."
+              node ../../packages/cli/dist/cli.js logs && echo "Application logs test completed"
+              node ../../packages/cli/dist/cli.js logs --system && echo "System logs test completed"
+              
+              # Test exec command (both container and system mode)
+              echo "Testing exec command..."
+              node ../../packages/cli/dist/cli.js exec "echo 'Hello from container'" && echo "Container exec test completed"
+              node ../../packages/cli/dist/cli.js exec --system "echo 'Hello from system'" && echo "System exec test completed"
+              
+              # Test cat command
+              echo "Testing cat command..."
+              node ../../packages/cli/dist/cli.js exec "echo 'test content' > /tmp/test.txt" && echo "Creating test file completed"
+              node ../../packages/cli/dist/cli.js cat /tmp/test.txt && echo "Cat test completed"
+            else
+              echo "Profile $profile has no debug tools - testing only system logs"
+              
+              # Only test system logs for profiles without debug tools
+              echo "Testing system logs command..."
+              node ../../packages/cli/dist/cli.js logs --system && echo "System logs test completed"
+              
+              # Skip exec, logs (application), and cat commands for non-debug profiles
+              echo "Skipping exec, application logs, and cat commands (no debug tools available)"
+            fi
             
             # Clean up test files
             rm -f test-host.txt container-copied.txt
