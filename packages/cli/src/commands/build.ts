@@ -75,14 +75,6 @@ export function handleBuildCommand(args: string[]): void {
         console.error('Error: -t/--tag requires a value');
         process.exit(1);
       }
-    } else if (arg === '--profile') {
-      if (nextArg) {
-        profile = nextArg;
-        i++; // Skip next argument
-      } else {
-        console.error('Error: --profile requires a value');
-        process.exit(1);
-      }
     } else if (arg === '--cache-dir') {
       if (nextArg) {
         cacheDir = nextArg;
@@ -97,6 +89,9 @@ export function handleBuildCommand(args: string[]): void {
       useDepot = true;
     } else if (arg === '--no-depot') {
       noDepot = true;
+    } else if (!arg.startsWith('-')) {
+      // First non-flag argument is the profile
+      profile = arg;
     }
   }
   
@@ -149,14 +144,6 @@ export function handleUpCommand(args: string[]): void {
         console.error('Error: -t/--tag requires a value');
         process.exit(1);
       }
-    } else if (arg === '--profile') {
-      if (nextArg) {
-        profile = nextArg;
-        i++; // Skip next argument
-      } else {
-        console.error('Error: --profile requires a value');
-        process.exit(1);
-      }
     } else if (arg === '--cache-dir') {
       if (nextArg) {
         cacheDir = nextArg;
@@ -173,6 +160,9 @@ export function handleUpCommand(args: string[]): void {
       useDepot = true;
     } else if (arg === '--no-depot') {
       noDepot = true;
+    } else if (!arg.startsWith('-')) {
+      // First non-flag argument is the profile
+      profile = arg;
     }
   }
   
@@ -217,12 +207,13 @@ function resolvePlatforms(profile: string): string[] {
   switch (profile) {
     case 'dev':
       return [getNativePlatform()];
-    case 'test':
+    case 'stage':
+    case 'stage-release':
     case 'prod':
     case 'prod-debug':
       return ['linux/riscv64'];
     default:
-      console.error(`Error: Unknown profile '${profile}'`);
+      console.error(`Error: Unknown profile '${profile}'. Valid profiles: dev, stage, stage-release, prod, prod-debug`);
       process.exit(1);
   }
 }
@@ -735,8 +726,8 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
     }
     console.log(`Cache directory: ${cacheDir}`);
     
-    // For test and prod profiles, also build LinuxKit image
-    if (profile === 'test' || profile === 'prod') {
+    // For stage and prod profiles, also build LinuxKit image
+    if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
       console.log(`\n🔄 Building LinuxKit image for ${profile} profile...`);
       const yamlPath = generateLinuxKitYaml(imageTag, profile, cacheDir, ociTarPath);
       buildLinuxKitImage(yamlPath, profile, ociTarPath, cacheDir, forceRebuild);

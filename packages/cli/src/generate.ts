@@ -27,17 +27,25 @@ function getCacheDirectory(ociTarPath?: string): string {
 export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir?: string, ociTarPath?: string) {
   const pathHash = getPathHash();
   
-  // Generate SSH debug keys
-  const sshKeyPath = cacheDir ? join(cacheDir, 'ssh.debug-key') : join(cwd(), 'ssh.debug-key');
-  const sshKeyPubPath = cacheDir ? join(cacheDir, 'ssh.debug-key.pub') : join(cwd(), 'ssh.debug-key.pub');
+  // Determine if debug tools should be included
+  const includeDebugTools = profile === 'dev' || profile === 'stage' || profile === 'prod-debug';
   
-  if (!existsSync(sshKeyPath)) {
-    writeFileSync(sshKeyPath, sshDebugKey);
-    chmodSync(sshKeyPath, 0o600);
-  }
+  // Generate SSH debug keys only if debug tools are included
+  let sshKeyPath: string | undefined;
+  let sshKeyPubPath: string | undefined;
   
-  if (!existsSync(sshKeyPubPath)) {
-    writeFileSync(sshKeyPubPath, sshDebugKeyPub);
+  if (includeDebugTools) {
+    sshKeyPath = cacheDir ? join(cacheDir, 'ssh.debug-key') : join(cwd(), 'ssh.debug-key');
+    sshKeyPubPath = cacheDir ? join(cacheDir, 'ssh.debug-key.pub') : join(cwd(), 'ssh.debug-key.pub');
+    
+    if (!existsSync(sshKeyPath)) {
+      writeFileSync(sshKeyPath, sshDebugKey);
+      chmodSync(sshKeyPath, 0o600);
+    }
+    
+    if (!existsSync(sshKeyPubPath)) {
+      writeFileSync(sshKeyPubPath, sshDebugKeyPub);
+    }
   }
   
   // Use the image tag directly since the OCI image is loaded into Docker
@@ -47,16 +55,21 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   // Guest agent image
   const guestAgentImage = process.env.CUSTOM_GUEST_AGENT_IMAGE || 'ghcr.io/zippiehq/vcr-guest-agent:latest';
   
-  const yamlConfig = `init:
-  - ghcr.io/zippiehq/vcr-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
-  - ghcr.io/zippiehq/vcr-runc@sha256:3f0a1027ab7507f657cafd28abff329366c0e774714eac48c4d4c10f46778596
-  - ghcr.io/zippiehq/vcr-containerd@sha256:97a307ea9e3eaa21d378f903f067d742bd66abd49e5ff483ae85528bed6d4e8a
-onboot:
+  // Build onboot section conditionally
+  let onboot = '';
+  if (includeDebugTools) {
+    onboot = `onboot:
   - name: dhcpcd
     image: ghcr.io/zippiehq/vcr-dhcpcd@sha256:3ad775c7f5402fc960d3812bec6650ffa48747fbd9bd73b62ff71b8d0bb72c5a
     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
-services:
-  - name: getty
+`;
+  }
+  
+  // Build services list conditionally
+  let services = '';
+  
+  if (includeDebugTools) {
+    services += `  - name: getty
     image: ghcr.io/zippiehq/vcr-getty@sha256:f1e8a4fbdbc7bf52eaad06bd59aa1268c91eb11bd615d3c27e93d8a35c0d8b7a
     env:
      - INSECURE=true
@@ -64,7 +77,10 @@ services:
     image: ghcr.io/zippiehq/vcr-linuxkit-sshd@sha256:448f0a6f0b30e7f6f4a28ab11268b07ed2fb81a4d4feb1092c0b16a126d33183
     binds.add:
       - /root/.ssh:/root/.ssh
-  - name: guest-agent
+`;
+  }
+  
+  services += `  - name: guest-agent
     image: ${guestAgentImage}
     net: host
     binds:
@@ -91,11 +107,24 @@ services:
       - CAP_MKNOD
       - CAP_AUDIT_WRITE
       - CAP_SETFCAP
-files:
+`;
+  
+  // Build files section conditionally
+  let files = '';
+  if (includeDebugTools) {
+    files = `files:
   - path: root/.ssh/authorized_keys
     source: /cache/ssh.debug-key.pub
     mode: "0600"
 `;
+  }
+  
+  const yamlConfig = `init:
+  - ghcr.io/zippiehq/vcr-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
+  - ghcr.io/zippiehq/vcr-runc@sha256:3f0a1027ab7507f657cafd28abff329366c0e774714eac48c4d4c10f46778596
+  - ghcr.io/zippiehq/vcr-containerd@sha256:97a307ea9e3eaa21d378f903f067d742bd66abd49e5ff483ae85528bed6d4e8a
+${onboot}services:
+${services}${files}`;
   
   const yamlPath = cacheDir ? join(cacheDir, 'vc.yml') : join(cwd(), 'vc.yml');
   writeFileSync(yamlPath, yamlConfig);
@@ -111,10 +140,10 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
   // Use the provided cache directory or fall back to calculating it
   const finalCacheDir = cacheDir || getCacheDirectory(ociTarPath);
   
-  // For test and prod profiles, use snapshot-builder with different commands
+  // For stage and prod profiles, use snapshot-builder with different commands
   let isolatedServiceConfig;
   
-  if (profile === 'test') {
+  if (profile === 'stage' || profile === 'stage-release') {
     isolatedServiceConfig = {
       image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
       container_name: `${pathHash}-vcr-isolated-service`,

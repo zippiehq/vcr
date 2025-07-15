@@ -23,8 +23,8 @@ export function handleLogsCommand(args: string[]): void {
       
       if (systemMode) {
         // System logs - show Docker container logs
-        if (profile === 'test' || profile === 'prod') {
-          // Show logs of the vcr-isolated-service container for test/prod
+        if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
+          // Show logs of the vcr-isolated-service container for stage/prod
           const followFlag = followMode ? ' -f' : '';
           execSync(`docker logs${followFlag} ${containerName}`, { stdio: 'inherit' });
         } else {
@@ -34,8 +34,8 @@ export function handleLogsCommand(args: string[]): void {
         }
       } else {
         // Application logs
-        if (profile === 'test' || profile === 'prod') {
-          // Use SSH to cat/tail /var/log/app.log for test/prod profiles
+        if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
+          // Use SSH to cat/tail /var/log/app.log for stage/prod profiles
           
           const logCommand = followMode ? 'tail -f /var/log/app.log' : 'cat /var/log/app.log';
           try {
@@ -86,8 +86,8 @@ export function handleExecCommand(args: string[]): void {
       
       if (systemMode) {
         // System mode - behave like the old behavior
-        if (profile === 'test' || profile === 'prod') {
-          // Use SSH for test/prod profiles (exec in VM)
+        if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
+          // Use SSH for stage/prod profiles (exec in VM)
           
           console.log(`Detected ${profile} profile (system mode) - executing command in VM...`);
           try {
@@ -106,7 +106,7 @@ export function handleExecCommand(args: string[]): void {
         }
               } else {
           // Container mode
-          if (profile === 'test' || profile === 'prod') {
+          if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
             // Use SSH + containerd to exec into the container
           
           console.log(`Detected ${profile} profile - executing command in container...`);
@@ -154,9 +154,9 @@ export function handleShellCommand(args: string[]): void {
       
       if (systemMode) {
         // System mode - behave like the old behavior
-        if (profile === 'test' || profile === 'prod') {
-          // This is a test or prod profile - exec into container then SSH
-          console.log('Detected test/prod profile (system mode) - connecting to RISC-V VM...');
+        if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
+          // This is a stage or prod profile - exec into container then SSH
+          console.log('Detected stage/prod profile (system mode) - connecting to RISC-V VM...');
           console.log('Type "exit" to return to your host shell');
           
           // First exec into the container, then SSH from there
@@ -179,9 +179,9 @@ export function handleShellCommand(args: string[]): void {
         }
               } else {
           // Application mode
-          if (profile === 'test' || profile === 'prod') {
+          if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
             // Use SSH to exec into the container via containerd
-            console.log('Detected test/prod profile - connecting to container...');
+            console.log('Detected stage/prod profile - connecting to container...');
             console.log('Type "exit" to return to your host shell');
           
           try {
@@ -231,8 +231,8 @@ export function handleCatCommand(args: string[]): void {
       const pathHash = getPathHash();
       const containerName = `${pathHash}-vcr-isolated-service`;
       
-      if (profile === 'test' || profile === 'prod') {
-        // Use SSH + containerd for test/prod profiles
+      if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
+        // Use SSH + containerd for stage/prod profiles
         
         console.log(`Detected ${profile} profile - viewing file in container...`);
         try {

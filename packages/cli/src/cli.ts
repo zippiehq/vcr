@@ -28,7 +28,7 @@ export function getComposeCacheDirectory(): string {
   return composeCacheDir;
 }
 
-export function detectProfileAndSshKey(): { profile: 'dev' | 'test' | 'prod', sshKeyPath?: string } {
+export function detectProfileAndSshKey(): { profile: 'dev' | 'stage' | 'stage-release' | 'prod' | 'prod-debug', sshKeyPath?: string } {
   const pathHash = getPathHash();
   const containerName = `${pathHash}-vcr-isolated-service`;
   
@@ -36,17 +36,21 @@ export function detectProfileAndSshKey(): { profile: 'dev' | 'test' | 'prod', ss
     const containerInfo = execSync(`docker inspect ${containerName} --format '{{.Config.Image}}'`, { encoding: 'utf8' }).trim();
     
     if (containerInfo === 'ghcr.io/zippiehq/vcr-snapshot-builder') {
-      // This is a test or prod profile - determine which one
+      // This is a stage or prod profile - determine which one
       try {
         const containerCmd = execSync(`docker inspect ${containerName} --format '{{join .Config.Cmd " "}}'`, { encoding: 'utf8' }).trim();
         if (containerCmd.includes('cartesi-machine')) {
+          // Check if it's prod or prod-debug by looking for debug tools
+          // For now, assume prod (we could enhance this by checking for debug services)
           return { profile: 'prod', sshKeyPath: '/work/ssh.debug-key' };
         } else {
-          return { profile: 'test', sshKeyPath: '/work/ssh.debug-key' };
+          // Check if it's stage or stage-release by looking for debug tools
+          // For now, assume stage (we could enhance this by checking for debug services)
+          return { profile: 'stage', sshKeyPath: '/work/ssh.debug-key' };
         }
       } catch (cmdErr) {
-        // Fallback to test if we can't determine
-        return { profile: 'test', sshKeyPath: '/work/ssh.debug-key' };
+        // Fallback to stage if we can't determine
+        return { profile: 'stage', sshKeyPath: '/work/ssh.debug-key' };
       }
     } else {
       return { profile: 'dev' };
@@ -63,8 +67,8 @@ vcr CLI - Verifiable Container Runner
 
 Usage:
   vcr create <dir> --template <lang>  Create new project from template
-  vcr build [-t <name:tag>] [options]  Build and push container images
-  vcr up [-t <name:tag>] [options]    Build and run development environment with isolated networking
+  vcr build <profile> [-t <name:tag>] [options]  Build container images
+  vcr up <profile> [-t <name:tag>] [options]    Build and run environment with isolated networking
   vcr down                           Stop development environment
   vcr logs [-f|--follow] [--system]  View container or system logs
   vcr exec [--system] <command>      Execute command in container or system
@@ -78,39 +82,51 @@ Create Options:
 
 Build Options:
   -t, --tag <name:tag>              Image name:tag (optional, defaults to vcr-build-<path-hash>:latest)
-  --profile <dev|test|prod|prod-debug>  Build profile (default: dev)
   --cache-dir <dir>                 Optional path to store exported build metadata
   --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
   --restart                         Force restart containers even if image tag matches (up command only)
   --depot                           Use depot build instead of docker buildx build
   --no-depot                        Force use docker buildx build even if depot.json is present
 
+Profiles:
+  dev               Native platform with debug tools (fastest development)
+  stage             RISC-V environment with debug tools (QEMU-based)
+  stage-release     RISC-V environment without debug tools (QEMU-based)
+  prod              Verifiable RISC-V environment without debug tools (Cartesi Machine)
+  prod-debug        Verifiable RISC-V environment with debug tools (Cartesi Machine)
+
 Prune Options:
   --local                           Only clean current project's cache and stop its environment
 
 Build Profiles:
-  dev        Native platform only, no dev tools, no attestation
-  test       RISC-V 64-bit, with dev tools, no attestation
-  prod       RISC-V 64-bit, no dev tools, with attestation
-  prod-debug RISC-V 64-bit, with dev tools, with attestation
+  dev               Native platform with debug tools (fastest development)
+  stage             RISC-V environment with debug tools (QEMU-based)
+  stage-release     RISC-V environment without debug tools (QEMU-based)
+  prod              Verifiable RISC-V environment without debug tools (Cartesi Machine)
+  prod-debug        Verifiable RISC-V environment with debug tools (Cartesi Machine)
 
 Examples:
   vcr create myapp --template python    # Create new Python project
   vcr create webapp --template node     # Create new Node.js project
   vcr create api --template go          # Create new Go project
   vcr create service --template rust    # Create new Rust project
-  vcr build                          # Build with default tag (vcr-build-<path-hash>:latest)
-  vcr build -t web3link/myapp:1.2.3                    # Fast dev loop (native)
-  vcr build -t web3link/myapp:1.2.3 --profile test     # RISC-V with dev tools
-  vcr build -t web3link/myapp:1.2.3 --profile prod     # Production RISC-V
-  vcr build -t web3link/myapp:1.2.3 --force-rebuild    # Force rebuild all artifacts
-  vcr build -t web3link/myapp:1.2.3 --depot            # Use depot build instead of docker buildx
-  vcr up                            # Build and run with default tag
-  vcr up -t web3link/myapp:1.2.3                      # Build and run dev environment
-  vcr up -t web3link/myapp:1.2.3 --profile test       # Build and run with RISC-V
-  vcr up -t web3link/myapp:1.2.3 --force-rebuild      # Force rebuild before running
-  vcr up -t web3link/myapp:1.2.3 --depot              # Use depot build and run
-  vcr up --restart                                   # Force restart containers
+  vcr build dev                      # Build for native platform with debug tools
+  vcr build stage                    # Build for RISC-V with debug tools
+  vcr build stage-release            # Build for RISC-V without debug tools
+  vcr build prod                     # Build for verifiable RISC-V without debug tools
+  vcr build prod-debug               # Build for verifiable RISC-V with debug tools
+  vcr build dev -t web3link/myapp:1.2.3               # Build with custom tag
+  vcr build prod --force-rebuild     # Force rebuild all artifacts
+  vcr build stage --depot            # Use depot build instead of docker buildx
+  vcr up dev                         # Build and run native environment
+  vcr up stage                       # Build and run RISC-V with debug tools
+  vcr up stage-release               # Build and run RISC-V without debug tools
+  vcr up prod                        # Build and run verifiable RISC-V
+  vcr up prod-debug                  # Build and run verifiable RISC-V with debug tools
+  vcr up dev -t web3link/myapp:1.2.3                  # Build and run with custom tag
+  vcr up prod --force-rebuild        # Force rebuild before running
+  vcr up stage --depot               # Use depot build and run
+  vcr up dev --restart               # Force restart containers
   vcr down                                             # Stop development environment
   vcr logs                                             # View container logs
   vcr logs -f                                          # Follow container logs in real-time
@@ -143,16 +159,16 @@ Notes:
   - Use --no-depot to force docker buildx build even when depot.json is present
   - Logs behavior varies by profile:
     * dev: vcr logs shows container logs, vcr logs --system shows all compose logs
-    * test/prod: vcr logs shows /var/log/app.log via SSH, vcr logs --system shows container logs
+    * stage/prod: vcr logs shows /var/log/app.log via SSH, vcr logs --system shows container logs
   - Shell behavior varies by profile:
     * dev: vcr shell opens container shell, vcr shell --system opens container shell
-    * test/prod: vcr shell opens container via containerd, vcr shell --system opens VM shell
+    * stage/prod: vcr shell opens container via containerd, vcr shell --system opens VM shell
   - Exec behavior varies by profile:
     * dev: vcr exec runs in container, vcr exec --system runs in container
-    * test/prod: vcr exec runs in container via containerd, vcr exec --system runs in VM
+    * stage/prod: vcr exec runs in container via containerd, vcr exec --system runs in VM
   - Cat behavior varies by profile:
     * dev: vcr cat uses Docker exec to view files in container
-    * test/prod: vcr cat uses SSH + containerd to view files in container
+    * stage/prod: vcr cat uses SSH + containerd to view files in container
 
 Prerequisites:
   - Docker and buildx installed
