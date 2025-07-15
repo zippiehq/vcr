@@ -36,41 +36,17 @@ export function detectProfileAndSshKey(): { profile: 'dev' | 'test' | 'prod', ss
     const containerInfo = execSync(`docker inspect ${containerName} --format '{{.Config.Image}}'`, { encoding: 'utf8' }).trim();
     
     if (containerInfo === 'ghcr.io/zippiehq/vcr-snapshot-builder') {
-      // This is a test or prod profile - find SSH key and determine which one
-      const baseCacheDir = join(homedir(), '.cache', 'vcr');
-      let sshKeyPath: string | undefined;
-      
-      if (existsSync(baseCacheDir)) {
-        // First check base cache directory
-        const baseKeyPath = join(baseCacheDir, 'ssh.debug-key');
-        if (existsSync(baseKeyPath)) {
-          sshKeyPath = baseKeyPath;
-        } else {
-          // Check digest-specific directories
-          const cacheEntries = execSync(`ls -1 "${baseCacheDir}"`, { encoding: 'utf8' }).trim().split('\n');
-          for (const entry of cacheEntries) {
-            if (entry && entry !== 'linuxkit-cache') { // Skip non-digest directories
-              const digestKeyPath = join(baseCacheDir, entry, 'ssh.debug-key');
-              if (existsSync(digestKeyPath)) {
-                sshKeyPath = digestKeyPath;
-                break;
-              }
-            }
-          }
-        }
-      }
-      
-      // Determine if it's test or prod by checking the command
+      // This is a test or prod profile - determine which one
       try {
         const containerCmd = execSync(`docker inspect ${containerName} --format '{{join .Config.Cmd " "}}'`, { encoding: 'utf8' }).trim();
         if (containerCmd.includes('cartesi-machine')) {
-          return { profile: 'prod', sshKeyPath };
+          return { profile: 'prod', sshKeyPath: '/work/ssh.debug-key' };
         } else {
-          return { profile: 'test', sshKeyPath };
+          return { profile: 'test', sshKeyPath: '/work/ssh.debug-key' };
         }
       } catch (cmdErr) {
         // Fallback to test if we can't determine
-        return { profile: 'test', sshKeyPath };
+        return { profile: 'test', sshKeyPath: '/work/ssh.debug-key' };
       }
     } else {
       return { profile: 'dev' };

@@ -17,7 +17,7 @@ export function handleLogsCommand(args: string[]): void {
       const followMode = args.includes('-f') || args.includes('--follow');
       const systemMode = args.includes('--system');
       
-      const { profile, sshKeyPath } = detectProfileAndSshKey();
+      const { profile } = detectProfileAndSshKey();
       const pathHash = getPathHash();
       const containerName = `${pathHash}-vcr-isolated-service`;
       
@@ -36,10 +36,6 @@ export function handleLogsCommand(args: string[]): void {
         // Application logs
         if (profile === 'test' || profile === 'prod') {
           // Use SSH to cat/tail /var/log/app.log for test/prod profiles
-          if (!sshKeyPath) {
-            console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-            process.exit(1);
-          }
           
           const logCommand = followMode ? 'tail -f /var/log/app.log' : 'cat /var/log/app.log';
           try {
@@ -84,7 +80,7 @@ export function handleExecCommand(args: string[]): void {
       }
       
       const command = execArgs.join(' ');
-      const { profile, sshKeyPath } = detectProfileAndSshKey();
+      const { profile } = detectProfileAndSshKey();
       const pathHash = getPathHash();
       const containerName = `${pathHash}-vcr-isolated-service`;
       
@@ -92,10 +88,6 @@ export function handleExecCommand(args: string[]): void {
         // System mode - behave like the old behavior
         if (profile === 'test' || profile === 'prod') {
           // Use SSH for test/prod profiles (exec in VM)
-          if (!sshKeyPath) {
-            console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-            process.exit(1);
-          }
           
           console.log(`Detected ${profile} profile (system mode) - executing command in VM...`);
           try {
@@ -112,14 +104,10 @@ export function handleExecCommand(args: string[]): void {
           console.log('Detected dev profile (system mode) - executing command in container...');
           execSync(`docker compose -f ${composePath} exec isolated_service ${command}`, { stdio: 'inherit' });
         }
-      } else {
-        // Container mode
-        if (profile === 'test' || profile === 'prod') {
-          // Use SSH + containerd to exec into the container
-          if (!sshKeyPath) {
-            console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-            process.exit(1);
-          }
+              } else {
+          // Container mode
+          if (profile === 'test' || profile === 'prod') {
+            // Use SSH + containerd to exec into the container
           
           console.log(`Detected ${profile} profile - executing command in container...`);
           try {
@@ -160,7 +148,7 @@ export function handleShellCommand(args: string[]): void {
       const systemMode = args.includes('--system');
       
       // Detect the profile by checking the container's image
-      const { profile, sshKeyPath } = detectProfileAndSshKey();
+      const { profile } = detectProfileAndSshKey();
       const pathHash = getPathHash();
       const containerName = `${pathHash}-vcr-isolated-service`;
       
@@ -170,11 +158,6 @@ export function handleShellCommand(args: string[]): void {
           // This is a test or prod profile - exec into container then SSH
           console.log('Detected test/prod profile (system mode) - connecting to RISC-V VM...');
           console.log('Type "exit" to return to your host shell');
-          
-          if (!sshKeyPath) {
-            console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-            process.exit(1);
-          }
           
           // First exec into the container, then SSH from there
           try {
@@ -194,17 +177,12 @@ export function handleShellCommand(args: string[]): void {
           console.log('Type "exit" to return to your host shell');
           execSync(`docker compose -f ${composePath} exec isolated_service /bin/sh`, { stdio: 'inherit' });
         }
-      } else {
-        // Application mode
-        if (profile === 'test' || profile === 'prod') {
-          // Use SSH to exec into the container via containerd
-          console.log('Detected test/prod profile - connecting to container...');
-          console.log('Type "exit" to return to your host shell');
-          
-          if (!sshKeyPath) {
-            console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-            process.exit(1);
-          }
+              } else {
+          // Application mode
+          if (profile === 'test' || profile === 'prod') {
+            // Use SSH to exec into the container via containerd
+            console.log('Detected test/prod profile - connecting to container...');
+            console.log('Type "exit" to return to your host shell');
           
           try {
             execSync(`docker exec -it ${containerName} ssh -t -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "ctr -n services.linuxkit task exec --exec-id debug --tty app /bin/sh"`, { stdio: 'inherit' });
@@ -249,16 +227,12 @@ export function handleCatCommand(args: string[]): void {
       
       const filePath = catArgs[0];
               
-      const { profile, sshKeyPath } = detectProfileAndSshKey();
+      const { profile } = detectProfileAndSshKey();
       const pathHash = getPathHash();
       const containerName = `${pathHash}-vcr-isolated-service`;
       
       if (profile === 'test' || profile === 'prod') {
         // Use SSH + containerd for test/prod profiles
-        if (!sshKeyPath) {
-          console.error('❌ SSH debug key not found. Please run "vcr up" with --profile test or --profile prod first.');
-          process.exit(1);
-        }
         
         console.log(`Detected ${profile} profile - viewing file in container...`);
         try {
