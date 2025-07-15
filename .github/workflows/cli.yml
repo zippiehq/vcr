@@ -62,18 +62,28 @@ jobs:
           # Test that the build command works for all profiles in a directory with a Dockerfile
           cd packages/sample-python
           echo "Testing dev profile build..."
-          node ../../packages/cli/dist/cli.js build --profile dev
-          node ../../packages/cli/dist/cli.js up --profile dev || (node ../../packages/cli/dist/cli.js logs && false)
+          node ../../packages/cli/dist/cli.js build dev
+          node ../../packages/cli/dist/cli.js up dev || (node ../../packages/cli/dist/cli.js logs && false)
           node ../../packages/cli/dist/cli.js down
           node ../../packages/cli/dist/cli.js prune
-          echo "Testing test profile build..."
-          node ../../packages/cli/dist/cli.js build --profile test
-          node ../../packages/cli/dist/cli.js up --profile test || (node ../../packages/cli/dist/cli.js logs && false)
+          echo "Testing stage profile build..."
+          node ../../packages/cli/dist/cli.js build stage
+          node ../../packages/cli/dist/cli.js up stage || (node ../../packages/cli/dist/cli.js logs && false)
+          node ../../packages/cli/dist/cli.js down
+          node ../../packages/cli/dist/cli.js prune
+          echo "Testing stage-release profile build..."
+          node ../../packages/cli/dist/cli.js build stage-release
+          node ../../packages/cli/dist/cli.js up stage-release || (node ../../packages/cli/dist/cli.js logs && false)
           node ../../packages/cli/dist/cli.js down
           node ../../packages/cli/dist/cli.js prune
           echo "Testing prod profile build..."
-          node ../../packages/cli/dist/cli.js build --profile prod 
-          node ../../packages/cli/dist/cli.js up --profile prod || (node ../../packages/cli/dist/cli.js logs && false)
+          node ../../packages/cli/dist/cli.js build prod 
+          node ../../packages/cli/dist/cli.js up prod || (node ../../packages/cli/dist/cli.js logs && false)
+          node ../../packages/cli/dist/cli.js down
+          node ../../packages/cli/dist/cli.js prune
+          echo "Testing prod-debug profile build..."
+          node ../../packages/cli/dist/cli.js build prod-debug
+          node ../../packages/cli/dist/cli.js up prod-debug || (node ../../packages/cli/dist/cli.js logs && false)
           node ../../packages/cli/dist/cli.js down
           node ../../packages/cli/dist/cli.js prune
 
@@ -82,13 +92,13 @@ jobs:
           cd packages/sample-python
           
           # Test each profile with comprehensive command testing
-          for profile in dev test prod; do
+          for profile in dev stage stage-release prod prod-debug; do
             echo "=== Testing $profile profile ==="
             
             # Build and start the environment
             echo "Building and starting $profile environment..."
-            node ../../packages/cli/dist/cli.js build --profile $profile
-            node ../../packages/cli/dist/cli.js up --profile $profile
+            node ../../packages/cli/dist/cli.js build $profile
+            node ../../packages/cli/dist/cli.js up $profile
             
             # Wait a moment for the environment to be ready
             sleep 10
@@ -175,4 +185,4 @@ jobs:
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js build 2>&1 | grep -q "No tag provided" || echo "Missing arguments error handling test completed"
           
           # Test invalid profile
-          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js build --profile invalid 2>&1 | grep -q "Error" || echo "Invalid profile error handling test completed"
+          node $GITHUB_WORKSPACE/packages/cli/dist/cli.js build invalid 2>&1 | grep -q "Error" || echo "Invalid profile error handling test completed"
