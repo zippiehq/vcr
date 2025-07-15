@@ -45,7 +45,7 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   const imageReference = imageTag;
   
   // Guest agent image
-  const guestAgentImage = 'ghcr.io/zippiehq/vcr-guest-agent:latest';
+  const guestAgentImage = process.env.CUSTOM_GUEST_AGENT_IMAGE || 'ghcr.io/zippiehq/vcr-guest-agent:latest';
   
   const yamlConfig = `init:
   - ghcr.io/zippiehq/vcr-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
@@ -181,6 +181,7 @@ qemu-system-riscv64 \
       command: [
         'cartesi-machine',
         '--flash-drive=label:root,filename:/work/vc.squashfs',
+        '--ram-length=1024Mi',
         '--append-bootargs=loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro',
         '--skip-root-hash-check',
         '--virtio-net=user',
