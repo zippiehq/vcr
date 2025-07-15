@@ -59,7 +59,8 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   
   // Build onboot section conditionally
   let onboot = '';
-  if (includeDebugTools) {
+  // this should really be be gone in debug tools but for some reason we need it
+  if (true /* includeDebugTools */) {
     onboot = `onboot:
   - name: dhcpcd
     image: ghcr.io/zippiehq/vcr-dhcpcd@sha256:3ad775c7f5402fc960d3812bec6650ffa48747fbd9bd73b62ff71b8d0bb72c5a
