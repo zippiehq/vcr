@@ -252,18 +252,22 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   console.log(`Working directory: ${currentDir}`);
   console.log(`Cache directory: ${cacheDir}`);
   
+  // Determine if debug tools should be included for this profile
+  const includeDebugTools = profile === 'dev' || profile === 'stage' || profile === 'prod-debug';
+  const debugSuffix = includeDebugTools ? '-debug' : '-release';
+  
   try {
     // Check if we need to rebuild LinuxKit image
-    const vcTarPath = cacheDir ? join(cacheDir, 'vc.tar') : join(currentDir, 'vc.tar');
-    const vcSquashfsPath = cacheDir ? join(cacheDir, 'vc.squashfs') : join(currentDir, 'vc.squashfs');
+    const vcTarPath = cacheDir ? join(cacheDir, `vc${debugSuffix}.tar`) : join(currentDir, `vc${debugSuffix}.tar`);
+    const vcSquashfsPath = cacheDir ? join(cacheDir, `vc${debugSuffix}.squashfs`) : join(currentDir, `vc${debugSuffix}.squashfs`);
     
-    if (!forceRebuild && existsSync(vcSquashfsPath)) {
-      console.log('✅ vc.squashfs already exists, skipping LinuxKit build and squashfs creation');
-    } else {
-      if (forceRebuild && existsSync(vcTarPath)) {
-        console.log('🔄 Force rebuild: removing existing vc.tar');
-        unlinkSync(vcTarPath);
-      }
+          if (!forceRebuild && existsSync(vcSquashfsPath)) {
+        console.log(`✅ vc${debugSuffix}.squashfs already exists, skipping LinuxKit build and squashfs creation`);
+      } else {
+        if (forceRebuild && existsSync(vcTarPath)) {
+          console.log(`🔄 Force rebuild: removing existing vc${debugSuffix}.tar`);
+          unlinkSync(vcTarPath);
+        }
       
       // Ensure .moby directory exists in cache
       if (cacheDir) {
@@ -304,19 +308,19 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
         console.log('✅ OCI image imported into LinuxKit cache');
       }
       
-    const command = [
-      'docker', 'run', '--rm',
-      '--user', `${uid}:${gid}`,
-      '--network', 'host',
-      '-e', 'HOME=/cache',
-      '-v', `${currentDir}:/work`,
+          const command = [
+        'docker', 'run', '--rm',
+        '--user', `${uid}:${gid}`,
+        '--network', 'host',
+        '-e', 'HOME=/cache',
+        '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
         '-v', `${linuxkitCacheDir}:/home/user/.linuxkit/cache`,
         ...(cacheDir ? ['-v', `${cacheDir}/.moby:/.moby`] : []),
-      '-v', '/var/run/docker.sock:/var/run/docker.sock',
+        '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
-      imageName,
-        'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', 'vc.yml'
+        imageName,
+        'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', `vc${debugSuffix}.yml`
       ];
     
     
@@ -329,16 +333,16 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
       try {
         if (existsSync(vcTarPath)) {
           const vcTarHash = execSync(`sha256sum "${vcTarPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
-          console.log(`📦 vc.tar SHA256: ${vcTarHash}`);
+          console.log(`📦 vc${debugSuffix}.tar SHA256: ${vcTarHash}`);
         } else {
-          console.log('⚠️  vc.tar not found after LinuxKit build');
+          console.log(`⚠️  vc${debugSuffix}.tar not found after LinuxKit build`);
         }
       } catch (err) {
-        console.log('⚠️  Could not calculate vc.tar SHA256:', err);
+        console.log(`⚠️  Could not calculate vc${debugSuffix}.tar SHA256:`, err);
       }
       
       // Start snapshot builder to create squashfs
-      console.log('Creating squashfs from vc.tar...');
+      console.log(`Creating squashfs from vc${debugSuffix}.tar...`);
       const snapshotCommand = [
         'docker', 'run', '--rm',
         '--user', `${uid}:${gid}`,
@@ -347,7 +351,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
         '-w', '/cache',
         'ghcr.io/zippiehq/vcr-snapshot-builder',
         'bash', '-c',
-        'rm -f /cache/vc.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc.squashfs -tar -noI -noId -noD -noF -noX -reproducible < /cache/vc.tar > /dev/null 2>&1 && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc.qemu-kernel && rm /cache/vc.tar'
+        `rm -f /cache/vc${debugSuffix}.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc${debugSuffix}.squashfs -tar -noI -noId -noD -noF -noX -reproducible < /cache/vc${debugSuffix}.tar > /dev/null 2>&1 && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc${debugSuffix}.qemu-kernel && rm /cache/vc${debugSuffix}.tar`
       ];
       
       console.log(`Executing: ${snapshotCommand.join(' ')}`);
@@ -363,33 +367,33 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
       console.log('✅ Squashfs created successfully');
     }
     
-    // Additional steps for prod profile
-    if (profile === 'prod') {
-      const cmSnapshotPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot') : join(currentDir, 'vc-cm-snapshot');
-      const cmSquashfsPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs') : join(currentDir, 'vc-cm-snapshot.squashfs');
-      const verityPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.verity') : join(currentDir, 'vc-cm-snapshot.squashfs.verity');
-      const rootHashPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs.root-hash') : join(currentDir, 'vc-cm-snapshot.squashfs.root-hash');
+    // Additional steps for prod profiles (prod and prod-debug)
+    if (profile === 'prod' || profile === 'prod-debug') {
+      const cmSnapshotPath = cacheDir ? join(cacheDir, `vc-cm-snapshot${debugSuffix}`) : join(currentDir, `vc-cm-snapshot${debugSuffix}`);
+      const cmSquashfsPath = cacheDir ? join(cacheDir, `vc-cm-snapshot${debugSuffix}.squashfs`) : join(currentDir, `vc-cm-snapshot${debugSuffix}.squashfs`);
+      const verityPath = cacheDir ? join(cacheDir, `vc-cm-snapshot${debugSuffix}.squashfs.verity`) : join(currentDir, `vc-cm-snapshot${debugSuffix}.squashfs.verity`);
+      const rootHashPath = cacheDir ? join(cacheDir, `vc-cm-snapshot${debugSuffix}.squashfs.root-hash`) : join(currentDir, `vc-cm-snapshot${debugSuffix}.squashfs.root-hash`);
       
-      // Check if we need to create Cartesi machine snapshot
-      if (!forceRebuild && existsSync(cmSnapshotPath)) {
-        console.log('✅ vc-cm-snapshot already exists, skipping Cartesi machine creation');
-      } else {
-        if (forceRebuild && existsSync(cmSnapshotPath)) {
-          console.log('🔄 Force rebuild: removing existing vc-cm-snapshot');
-          execSync(`rm -rf "${cmSnapshotPath}"`, { stdio: 'ignore' });
-        }
+              // Check if we need to create Cartesi machine snapshot
+        if (!forceRebuild && existsSync(cmSnapshotPath)) {
+          console.log(`✅ vc-cm-snapshot${debugSuffix} already exists, skipping Cartesi machine creation`);
+        } else {
+          if (forceRebuild && existsSync(cmSnapshotPath)) {
+            console.log(`🔄 Force rebuild: removing existing vc-cm-snapshot${debugSuffix}`);
+            execSync(`rm -rf "${cmSnapshotPath}"`, { stdio: 'ignore' });
+          }
         
-        console.log('Creating Cartesi machine snapshot...');
-        const cartesiCommand = [
-          'docker', 'run', '--rm',
-          '--user', `${uid}:${gid}`,
-          '-v', `${currentDir}:/work`,
-          '-v', `${cacheDir}:/cache`,
-          '-w', '/cache',
-          'ghcr.io/zippiehq/vcr-snapshot-builder',
-          'bash', '-c',
-          'rm -rf /cache/vc-cm-snapshot && cartesi-machine --ram-length=1024Mi --flash-drive="label:root,filename:/cache/vc.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot'
-        ];
+                  console.log(`Creating Cartesi machine snapshot for ${profile} profile...`);
+          const cartesiCommand = [
+            'docker', 'run', '--rm',
+            '--user', `${uid}:${gid}`,
+            '-v', `${currentDir}:/work`,
+            '-v', `${cacheDir}:/cache`,
+            '-w', '/cache',
+            'ghcr.io/zippiehq/vcr-snapshot-builder',
+            'bash', '-c',
+            `rm -rf /cache/vc-cm-snapshot${debugSuffix} && cartesi-machine --ram-length=1024Mi --flash-drive="label:root,filename:/cache/vc${debugSuffix}.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot${debugSuffix}`
+          ];
         
         console.log(`Executing: ${cartesiCommand.join(' ')}`);
         const cartesiResult = spawnSync(cartesiCommand[0], cartesiCommand.slice(1), { stdio: 'inherit', cwd: currentDir });
@@ -399,7 +403,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           throw new Error(`Cartesi machine command failed with status ${cartesiResult.status}`);
         }
         
-        console.log('✅ Cartesi machine snapshot created successfully');
+        console.log(`✅ Cartesi machine snapshot created successfully for ${profile} profile`);
         
         // Print the hash from vc-cm-snapshot/hash
         try {
@@ -409,7 +413,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
             const hash = hashBuffer.toString('hex');
             console.log(`🔐 Cartesi machine hash: ${hash}`);
           } else {
-            console.error('❌ Error: Cartesi machine hash file not found at vc-cm-snapshot/hash');
+            console.error(`❌ Error: Cartesi machine hash file not found at vc-cm-snapshot${debugSuffix}/hash`);
             console.error('This indicates the Cartesi machine creation failed or the hash file was not generated.');
             console.error('Checking if snapshot directory exists and listing contents...');
             try {
@@ -433,9 +437,9 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
       
       // Check if we need to compress Cartesi machine snapshot
       if (!forceRebuild && existsSync(cmSquashfsPath)) {
-        console.log('✅ vc-cm-snapshot.squashfs already exists, skipping compression');
+        console.log(`✅ vc-cm-snapshot${debugSuffix}.squashfs already exists, skipping compression`);
       } else {
-        console.log('Creating compressed Cartesi machine snapshot...');
+        console.log(`Creating compressed Cartesi machine snapshot for ${profile} profile...`);
         const compressCommand = [
           'docker', 'run', '--rm',
           '--user', `${uid}:${gid}`,
@@ -444,7 +448,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          'rm -f /cache/vc-cm-snapshot.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot /cache/vc-cm-snapshot.squashfs -comp zstd -reproducible > /dev/null 2>&1'
+          `rm -f /cache/vc-cm-snapshot${debugSuffix}.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot${debugSuffix} /cache/vc-cm-snapshot${debugSuffix}.squashfs -comp zstd -reproducible > /dev/null 2>&1`
         ];
         
         console.log(`Executing: ${compressCommand.join(' ')}`);
@@ -457,7 +461,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           throw new Error(`Compression command failed with status ${compressResult.status || 'null (process killed)'}`);
         }
         
-        console.log('✅ Compressed Cartesi machine snapshot created successfully');
+        console.log(`✅ Compressed Cartesi machine snapshot created successfully for ${profile} profile`);
       }
       
       // Verify file size is divisible by 512 (required for block devices)
@@ -466,13 +470,13 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
         const stats = statSync(cmSquashfsPath);
         fileSize = stats.size;
         if (fileSize % 512 !== 0) {
-          console.error(`❌ Error: vc-cm-snapshot.squashfs size (${fileSize} bytes) is not divisible by 512`);
+          console.error(`❌ Error: vc-cm-snapshot${debugSuffix}.squashfs size (${fileSize} bytes) is not divisible by 512`);
           console.error(`   Remainder: ${fileSize % 512} bytes`);
           console.error(`   Required for proper block device alignment`);
           process.exit(1);
         }
       } catch (err) {
-        console.error('❌ Error: Could not verify vc-cm-snapshot.squashfs file size:', err);
+        console.error(`❌ Error: Could not verify vc-cm-snapshot${debugSuffix}.squashfs file size:`, err);
         process.exit(1);
       }
       
@@ -514,7 +518,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          `rm -f /cache/vc-cm-snapshot.squashfs.verity && veritysetup --root-hash-file /cache/vc-cm-snapshot.squashfs.root-hash --hash-offset=${fileSize} --salt=${salt} --uuid=${deterministicUuid} format /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs`
+          `rm -f /cache/vc-cm-snapshot${debugSuffix}.squashfs.verity && veritysetup --root-hash-file /cache/vc-cm-snapshot${debugSuffix}.squashfs.root-hash --hash-offset=${fileSize} --salt=${salt} --uuid=${deterministicUuid} format /cache/vc-cm-snapshot${debugSuffix}.squashfs /cache/vc-cm-snapshot${debugSuffix}.squashfs`
         ];
         
         console.log(`Executing: ${verityCommand.join(' ')}`);
@@ -539,7 +543,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-w', '/cache',
           'ghcr.io/zippiehq/vcr-snapshot-builder',
           'bash', '-c',
-          `veritysetup verify --root-hash-file=/cache/vc-cm-snapshot.squashfs.root-hash --hash-offset=${fileSize} /cache/vc-cm-snapshot.squashfs /cache/vc-cm-snapshot.squashfs`
+          `veritysetup verify --root-hash-file=/cache/vc-cm-snapshot${debugSuffix}.squashfs.root-hash --hash-offset=${fileSize} /cache/vc-cm-snapshot${debugSuffix}.squashfs /cache/vc-cm-snapshot${debugSuffix}.squashfs`
         ];
         
         console.log(`Executing verification: ${verifyCommand.join(' ')}`);
@@ -560,28 +564,28 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
       
       // Print SHA256 of vc.squashfs
       try {
-        const vcSquashfsPath = cacheDir ? join(cacheDir, 'vc.squashfs') : join(currentDir, 'vc.squashfs');
+        const vcSquashfsPath = cacheDir ? join(cacheDir, `vc${debugSuffix}.squashfs`) : join(currentDir, `vc${debugSuffix}.squashfs`);
         if (existsSync(vcSquashfsPath)) {
           const vcSquashfsHash = execSync(`sha256sum "${vcSquashfsPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
-          console.log(`📦 vc.squashfs SHA256: ${vcSquashfsHash}`);
+          console.log(`📦 vc${debugSuffix}.squashfs SHA256: ${vcSquashfsHash}`);
         } else {
-          console.log('⚠️  vc.squashfs not found');
+          console.log(`⚠️  vc${debugSuffix}.squashfs not found`);
         }
       } catch (err) {
-        console.log('⚠️  Could not calculate vc.squashfs SHA256:', err);
+        console.log(`⚠️  Could not calculate vc${debugSuffix}.squashfs SHA256:`, err);
       }
       
       // Print SHA256 of vc-cm-snapshot.squashfs
       try {
-        const cmSquashfsPath = cacheDir ? join(cacheDir, 'vc-cm-snapshot.squashfs') : join(currentDir, 'vc-cm-snapshot.squashfs');
+        const cmSquashfsPath = cacheDir ? join(cacheDir, `vc-cm-snapshot${debugSuffix}.squashfs`) : join(currentDir, `vc-cm-snapshot${debugSuffix}.squashfs`);
         if (existsSync(cmSquashfsPath)) {
           const cmSquashfsHash = execSync(`sha256sum "${cmSquashfsPath}"`, { encoding: 'utf8' }).trim().split(' ')[0];
-          console.log(`📦 vc-cm-snapshot.squashfs SHA256: ${cmSquashfsHash}`);
+          console.log(`📦 vc-cm-snapshot${debugSuffix}.squashfs SHA256: ${cmSquashfsHash}`);
         } else {
-          console.log('⚠️  vc-cm-snapshot.squashfs not found');
+          console.log(`⚠️  vc-cm-snapshot${debugSuffix}.squashfs not found`);
         }
       } catch (err) {
-        console.log('⚠️  Could not calculate vc-cm-snapshot.squashfs SHA256:', err);
+        console.log(`⚠️  Could not calculate vc-cm-snapshot${debugSuffix}.squashfs SHA256:`, err);
       }
       
       // Print Cartesi machine hash

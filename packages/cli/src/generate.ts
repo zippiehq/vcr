@@ -28,6 +28,8 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   const pathHash = getPathHash();
   
   // Determine if debug tools should be included
+  // stage and prod-debug share the same base image (with debug tools)
+  // stage-release and prod share the same base image (without debug tools)
   const includeDebugTools = profile === 'dev' || profile === 'stage' || profile === 'prod-debug';
   
   // Generate SSH debug keys only if debug tools are included
@@ -126,7 +128,9 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
 ${onboot}services:
 ${services}${files}`;
   
-  const yamlPath = cacheDir ? join(cacheDir, 'vc.yml') : join(cwd(), 'vc.yml');
+  // Use a shared filename based on debug tools inclusion, not specific profile
+  const debugSuffix = includeDebugTools ? '-debug' : '-release';
+  const yamlPath = cacheDir ? join(cacheDir, `vc${debugSuffix}.yml`) : join(cwd(), `vc${debugSuffix}.yml`);
   writeFileSync(yamlPath, yamlConfig);
   console.log(`Generated LinuxKit YAML: ${yamlPath}`);
   return yamlPath;
@@ -144,6 +148,10 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
   let isolatedServiceConfig;
   
   if (profile === 'stage' || profile === 'stage-release') {
+    // Determine the correct squashfs file based on debug tools inclusion
+    const includeDebugTools = profile === 'stage';
+    const debugSuffix = includeDebugTools ? '-debug' : '-release';
+    
     isolatedServiceConfig = {
       image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
       container_name: `${pathHash}-vcr-isolated-service`,
@@ -162,11 +170,11 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
         ps ux
 qemu-system-riscv64 \
   --machine virt,memory-backend=mem0 \
-  --kernel /work/vc.qemu-kernel \
+  --kernel /work/vc${debugSuffix}.qemu-kernel \
   -nographic \
   -object memory-backend-memfd,id=mem0,size=512M \
   -append "root=/dev/vda rootfstype=squashfs console=ttyS0" \
-  -drive "file=/work/vc.squashfs,format=raw,if=virtio" \
+  -drive "file=/work/vc${debugSuffix}.squashfs,format=raw,if=virtio" \
   -chardev socket,id=c,path=/tmp/vhost.socket \
   -device vhost-user-vsock-pci,chardev=c \
   -monitor none \
@@ -197,7 +205,11 @@ qemu-system-riscv64 \
         `vcr.path.hash=${pathHash}`
       ]
     };
-  } else if (profile === 'prod') {
+  } else if (profile === 'prod' || profile === 'prod-debug') {
+    // Determine the correct squashfs file based on debug tools inclusion
+    const includeDebugTools = profile === 'prod-debug';
+    const debugSuffix = includeDebugTools ? '-debug' : '-release';
+    
     isolatedServiceConfig = {
       image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
       container_name: `${pathHash}-vcr-isolated-service`,
@@ -209,7 +221,7 @@ qemu-system-riscv64 \
       ],
       command: [
         'cartesi-machine',
-        '--flash-drive=label:root,filename:/work/vc.squashfs',
+        `--flash-drive=label:root,filename:/work/vc${debugSuffix}.squashfs`,
         '--ram-length=1024Mi',
         '--append-bootargs=loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro',
         '--skip-root-hash-check',
