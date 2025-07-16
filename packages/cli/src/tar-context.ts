@@ -267,10 +267,10 @@ export class TarContextBuilder {
   }
 
   /**
-   * Create tar using Docker Ubuntu 24.04
+   * Create tar using Docker snapshot builder
    */
   private createTarDocker(files: string[], tempDir: string): void {
-    console.log('🐳 Using Docker Ubuntu 24.04 for deterministic tar creation...');
+    console.log('🐳 Using VCR snapshot builder for deterministic tar creation...');
     
     // Create a temporary directory for Docker volume mount
     const dockerTempDir = mkdtempSync(join(tmpdir(), 'vcr-docker-'));
@@ -296,7 +296,7 @@ export class TarContextBuilder {
       '-v', `${this.contextPath}:/context:ro`,
       '-v', `${dockerTempDir}:/tmp`,
       '-w', '/context',
-      'ubuntu:24.04',
+      'ghcr.io/zippiehq/vcr-snapshot-builder',
       'tar', ...tarArgs
     ].join(' ');
     
@@ -333,13 +333,13 @@ export class TarContextBuilder {
       const capabilities = this.checkTarCapabilities();
       
       if (this.forceDocker) {
-        console.log('🐳 Force using Docker Ubuntu 24.04 for tar creation');
+        console.log('🐳 Force using VCR snapshot builder for tar creation');
         this.createTarDocker(files, tempDir);
       } else if (capabilities.supportsSort && capabilities.supportsMtime && capabilities.supportsGnuFormat) {
         console.log('✅ Local tar supports all deterministic options');
         this.createTarLocal(files, tempDir);
       } else {
-        console.log('⚠️  Local tar missing deterministic options, using Docker Ubuntu 24.04');
+        console.log('⚠️  Local tar missing deterministic options, using VCR snapshot builder');
         this.createTarDocker(files, tempDir);
       }
       
