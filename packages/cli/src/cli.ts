@@ -10,6 +10,7 @@ import { handleLogsCommand, handleExecCommand, handleShellCommand, handleCatComm
 import { pruneVcrLocal, pruneVcr } from './commands/prune';
 import { handleCreateCommand } from './commands/create';
 import { handleExportCommand } from './commands/export';
+import { handleIntroCommand } from './commands/intro';
 import { checkDockerAvailable } from './checks';
 
 export function getPathHash(): string {
@@ -64,120 +65,47 @@ export function detectProfileAndSshKey(): { profile: 'dev' | 'stage' | 'stage-re
 
 function showHelp() {
   console.log(`
-vcr CLI - Verifiable Container Runner
+🚀 vcr CLI - Verifiable Container Runner
 
-Usage:
-  vcr create <dir> --template <lang>  Create new project from template
-  vcr build <profile> [-t <name:tag>] [options]  Build container images
-  vcr up <profile> [-t <name:tag>] [options]    Build and run environment with isolated networking
-  vcr down                           Stop development environment
-  vcr logs [-f|--follow] [--system]  View container or system logs
-  vcr exec [--system] <command>      Execute command in container or system
-  vcr shell [--system]               Open shell in container or system
-  vcr cat <file-path>                View file contents in container
-  vcr export <profile> <path>        Export profile artifacts to directory
-  vcr prune [--local]                Clean up VCR environment (cache, registry, builder)
-  vcr --help                         Show this help message
+📋 Usage:
+  🆕 vcr intro                           Show introduction and quick start guide
+  🏗️  vcr create <dir> --template <lang>  Create new project from template
+  🔨 vcr build <profile> [options]       Build container images
+  🚀 vcr up <profile> [options]          Build and run environment
+  🛑 vcr down                            Stop development environment
+  📄 vcr logs [options]                  View container or system logs
+  ⚡ vcr exec [options] <command>        Execute command in container or system
+  🐚 vcr shell [options]                 Open shell in container or system
+  📖 vcr cat <file-path>                 View file contents in container
+  📦 vcr export <profile> <path>         Export profile artifacts to directory
+  🧹 vcr prune [--local]                 Clean up VCR environment
+  ❓ vcr --help                          Show this help message
 
-Create Options:
-  --template <lang>                  Template language (e.g., python, node, go, rust)
+🎯 Profiles:
+  🚀 dev          - Native platform, fastest development
+  🧪 stage        - RISC-V QEMU with debug tools
+  🔒 stage-release- RISC-V QEMU without debug tools
+  🔐 prod         - Verifiable RISC-V Cartesi Machine
+  🐛 prod-debug   - Verifiable RISC-V with debug tools
 
-Build Options:
-  -t, --tag <name:tag>              Image name:tag (optional, defaults to vcr-build-<path-hash>:latest)
-  --cache-dir <dir>                 Optional path to store exported build metadata
-  --force-rebuild                   Force rebuild of cached artifacts (LinuxKit, Cartesi machine, etc.)
-  --restart                         Force restart containers even if image tag matches (up command only)
-  --depot                           Use depot build instead of docker buildx build
-  --no-depot                        Force use docker buildx build even if depot.json is present
+⚙️  Common Options:
+  🏷️  -t, --tag <name:tag>                Custom image tag
+  🔄 --force-rebuild                     Force rebuild all artifacts
+  🏗️  --depot                             Use depot build instead of docker buildx
+  💻 --system                            Target system instead of container
+  📺 -f, --follow                        Follow logs in real-time
 
-Profiles:
-  dev               Native platform with debug tools (fastest development)
-  stage             RISC-V environment with debug tools (QEMU-based)
-  stage-release     RISC-V environment without debug tools (QEMU-based)
-  prod              Verifiable RISC-V environment without debug tools (Cartesi Machine)
-  prod-debug        Verifiable RISC-V environment with debug tools (Cartesi Machine)
+💡 Examples:
+  🆕 vcr intro                           # Get started guide
+  🏗️  vcr create myapp --template python  # New Python project
+  🚀 vcr up dev                          # Build and run (fastest)
+  🧪 vcr up stage                        # Build and run (RISC-V testing)
+  🔐 vcr up prod                         # Build and run (verifiable)
+  📄 vcr logs                            # View application logs
+  ⚡ vcr exec "ls -la"                   # Run command in container
+  🛑 vcr down                            # Stop environment
 
-Prune Options:
-  --local                           Only clean current project's cache and stop its environment
-
-Build Profiles:
-  dev               Native platform with debug tools (fastest development)
-  stage             RISC-V environment with debug tools (QEMU-based)
-  stage-release     RISC-V environment without debug tools (QEMU-based)
-  prod              Verifiable RISC-V environment without debug tools (Cartesi Machine)
-  prod-debug        Verifiable RISC-V environment with debug tools (Cartesi Machine)
-
-Examples:
-  vcr create myapp --template python    # Create new Python project
-  vcr create webapp --template node     # Create new Node.js project
-  vcr create api --template go          # Create new Go project
-  vcr create service --template rust    # Create new Rust project
-  vcr build dev                      # Build for native platform with debug tools
-  vcr build stage                    # Build for RISC-V with debug tools
-  vcr build stage-release            # Build for RISC-V without debug tools
-  vcr build prod                     # Build for verifiable RISC-V without debug tools
-  vcr build prod-debug               # Build for verifiable RISC-V with debug tools
-  vcr build dev -t web3link/myapp:1.2.3               # Build with custom tag
-  vcr build prod --force-rebuild     # Force rebuild all artifacts
-  vcr build stage --depot            # Use depot build instead of docker buildx
-  vcr up dev                         # Build and run native environment
-  vcr up stage                       # Build and run RISC-V with debug tools
-  vcr up stage-release               # Build and run RISC-V without debug tools
-  vcr up prod                        # Build and run verifiable RISC-V
-  vcr up prod-debug                  # Build and run verifiable RISC-V with debug tools
-  vcr up dev -t web3link/myapp:1.2.3                  # Build and run with custom tag
-  vcr up prod --force-rebuild        # Force rebuild before running
-  vcr up stage --depot               # Use depot build and run
-  vcr up dev --restart               # Force restart containers
-  vcr down                                             # Stop development environment
-  vcr logs                                             # View container logs
-  vcr logs -f                                          # Follow container logs in real-time
-  vcr logs --system                                    # View system logs (Docker container logs)
-  vcr logs --system -f                                 # Follow system logs in real-time
-  vcr exec ls -la                                      # Execute command in container
-  vcr exec cat /app/config.json                        # View file in container
-  vcr exec --system ps aux                             # Execute command in system (VM/container)
-  vcr shell                                            # Open shell in container
-  vcr shell --system                                   # Open shell in system (VM/container)
-  vcr cat /app/config.json                             # View file in container
-  vcr cat /app/logs/app.log                            # View log file
-  vcr export prod ./my-deployment                      # Export prod profile artifacts
-  vcr export stage-release ./stage-artifacts           # Export stage-release artifacts
-  vcr export prod-debug ./debug-deployment             # Export prod-debug artifacts
-  vcr prune                                            # Clean up entire VCR environment
-  vcr prune --local                                    # Clean up only current project
-
-Notes:
-  - Docker Compose files are stored in ~/.cache/vcr/<path-hash>/ for each project directory
-  - Use 'vcr down' to stop the environment (no need to specify compose file path)
-  - Use 'vcr logs' to view container logs (no need to specify compose file path)
-  - Use 'vcr logs --system' to view system logs (Docker container logs)
-  - Use 'vcr exec' to run commands in the container
-  - Use 'vcr exec --system' to run commands in the system (VM/container)
-  - Use 'vcr shell' to get an interactive shell in the container
-  - Use 'vcr shell --system' to get an interactive shell in the system (VM/container)
-  - Use 'vcr cat' to quickly view file contents in the application container
-  - Container paths should start with /app/ to avoid ambiguity
-  - Default image tags are based on the current directory path hash
-  - vcr up automatically detects image changes and restarts containers when needed
-  - If depot.json is present in the current directory, depot build is used automatically
-  - Use --no-depot to force docker buildx build even when depot.json is present
-  - Logs behavior varies by profile:
-    * dev: vcr logs shows container logs, vcr logs --system shows all compose logs
-    * stage/prod: vcr logs shows /var/log/app.log via SSH, vcr logs --system shows container logs
-  - Shell behavior varies by profile:
-    * dev: vcr shell opens container shell, vcr shell --system opens container shell
-    * stage/prod: vcr shell opens container via containerd, vcr shell --system opens VM shell
-  - Exec behavior varies by profile:
-    * dev: vcr exec runs in container, vcr exec --system runs in container
-    * stage/prod: vcr exec runs in container via containerd, vcr exec --system runs in VM
-  - Cat behavior varies by profile:
-    * dev: vcr cat uses Docker exec to view files in container
-    * stage/prod: vcr cat uses SSH + containerd to view files in container
-
-Prerequisites:
-  - Docker and buildx installed
-  - RISC-V binfmt emulation will be installed automatically if needed
+📚 For detailed help: vcr <command> --help
 `);
 }
 
@@ -216,6 +144,10 @@ function main() {
   const command = args[0];
   
   switch (command) {
+    case 'intro':
+      handleIntroCommand();
+      break;
+      
     case 'build':
       handleBuildCommand(args);
       break;
