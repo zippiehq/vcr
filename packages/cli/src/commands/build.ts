@@ -728,12 +728,17 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       '--sbom=false',
     ];
     
+    // Add SOURCE_DATE_EPOCH build arg for deterministic builds
+    if (["stage", "stage-release", "prod", "prod-debug"].includes(profile)) {
+      buildArgs.push('--build-arg', 'SOURCE_DATE_EPOCH=1752444000');
+    }
+    
     if (profile === 'dev') {
       // For dev profile, only output to Docker
       buildArgs.push('--output', `type=docker,name=${imageTag}`);
     } else {
       // For test/prod profiles, output to OCI tar for LinuxKit
-      buildArgs.push('--output', `type=oci,dest=${ociTarPath},name=${imageTag}`);
+      buildArgs.push('--output', `type=oci,dest=${ociTarPath},name=${imageTag},rewrite-timestamp=true`);
     }
     
     // Use tar file via stdin if available, otherwise use directory
@@ -751,14 +756,22 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       'buildx',
       'build',
       '--platform', platforms.join(','),
-      '--output', `type=oci,dest=${ociTarPath},name=${imageTag}`,
       '--provenance=false',
       '--sbom=false',
     ];
     
-    // Only load into Docker for dev profile (native platform)
+    // Add SOURCE_DATE_EPOCH build arg for deterministic builds
+    if (["stage", "stage-release", "prod", "prod-debug"].includes(profile)) {
+      buildArgs.push('--build-arg', 'SOURCE_DATE_EPOCH=1752444000');
+    }
+    
+    // Set output based on profile
     if (profile === 'dev') {
+      // For dev profile, load into Docker
       buildArgs.push('--output', `type=docker,name=${imageTag}`);
+    } else {
+      // For non-dev profiles, output to OCI tar with rewrite-timestamp
+      buildArgs.push('--output', `type=oci,dest=${ociTarPath},name=${imageTag},rewrite-timestamp=true`);
     }
     
     // Use tar file via stdin if available, otherwise use directory
@@ -776,6 +789,9 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   console.log(`${buildCommand}\n`);
   
   try {
+    // Set SOURCE_DATE_EPOCH for deterministic builds on non-dev profiles
+    const sourceDateEpoch = ["stage", "stage-release", "prod", "prod-debug"].includes(profile) ? '1752444000' : '0';
+    
     if (useStdin && contextTarPath) {
       // Pipe tar file via stdin
       const tarContent = readFileSync(contextTarPath);
@@ -783,13 +799,13 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
         input: tarContent,
         stdio: ['pipe', 'inherit', 'inherit'], 
         cwd: currentDir,
-        env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
+        env: { ...process.env, SOURCE_DATE_EPOCH: sourceDateEpoch }
       });
     } else {
       execSync(buildCommand, { 
         stdio: 'inherit', 
         cwd: currentDir,
-        env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
+        env: { ...process.env, SOURCE_DATE_EPOCH: sourceDateEpoch }
       });
     }
     console.log(`\n✅ Build completed successfully!`);
