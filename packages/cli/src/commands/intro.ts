@@ -42,7 +42,7 @@ prod-debug   - Verifiable RISC-V with debug tools
 • Use 'stage' to test RISC-V compatibility  
 • Use 'prod' for verifiable, attested builds
 • SSH keys are auto-generated for debug profiles
-• All builds are deterministic and reproducible
+• All builds (based on same built Docker image) are deterministic and reproducible
 
 🔧 Common Commands
 ==================
