@@ -840,7 +840,15 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       console.log('   This provides faster development experience but performance will NOT');
       console.log('   be representative of production (Cartesi Machine)');
     }
-    
+
+    // Performance note for stage profiles without turbo
+    if (!turbo && (profile === 'stage' || profile === 'stage-release')) {
+      console.log('\n💡 Performance Note: Using QEMU emulation (faster than Cartesi Machine)');
+      console.log('   This provides good RISC-V testing but is NOT reproducible');
+      console.log('   For production performance and reproducibility, use the prod profile');
+      console.log('   If you need even faster emulation, try the --turbo flag for multi-core QEMU.');
+    }
+
     // Performance note for dev profile
     if (profile === 'dev') {
       console.log('\n💡 Performance Note: Using native platform (fastest development)');
@@ -995,6 +1003,14 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
       console.log('\n⚠️  Performance Note: --turbo flag enabled multi-core QEMU emulation');
       console.log('   This provides faster development experience but performance will NOT');
       console.log('   be representative of production (Cartesi Machine)');
+    }
+
+    // Performance note for stage profiles without turbo
+    if (!turbo && (profile === 'stage' || profile === 'stage-release')) {
+      console.log('\n💡 Performance Note: Using QEMU emulation (faster than Cartesi Machine)');
+      console.log('   This provides good RISC-V testing but is NOT reproducible');
+      console.log('   For production performance and reproducibility, use the prod profile');
+      console.log('   If you need even faster emulation, try the --turbo flag for multi-core QEMU.');
     }
     
     // Performance note for dev profile
