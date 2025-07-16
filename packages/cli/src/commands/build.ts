@@ -136,6 +136,13 @@ export function handleBuildCommand(args: string[]): void {
     checkRiscv64Support();
   }
 
+  // Warn about turbo flag performance characteristics
+  if (turbo && (profile === 'stage' || profile === 'stage-release')) {
+    console.log('⚠️  Warning: --turbo flag enables multi-core QEMU emulation');
+    console.log('   Performance will NOT be representative of production (Cartesi Machine)');
+    console.log('   Use for faster development/testing only\n');
+  }
+
   buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo);
 }
 
@@ -223,6 +230,13 @@ export function handleUpCommand(args: string[]): void {
   // Check RISC-V support if needed
   if (profile !== 'dev') {
     checkRiscv64Support();
+  }
+
+  // Warn about turbo flag performance characteristics
+  if (turbo && (profile === 'stage' || profile === 'stage-release')) {
+    console.log('⚠️  Warning: --turbo flag enables multi-core QEMU emulation');
+    console.log('   Performance will NOT be representative of production (Cartesi Machine)');
+    console.log('   Use for faster development/testing only\n');
   }
 
   runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo);
