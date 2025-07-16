@@ -193,13 +193,30 @@ jobs:
           echo "Testing export command..."
           cd packages/sample-python
           
-          # Build a profile first
+          # Build stage profile first
           node ../../packages/cli/dist/cli.js build stage
           
-          # Test export command
+          # Test export stage profile
           echo "Testing export stage profile..."
           node ../../packages/cli/dist/cli.js export stage ./test-export-stage
           ls -la ./test-export-stage/
+          
+          # Build prod-debug profile to test Cartesi machine hash export
+          node ../../packages/cli/dist/cli.js build prod-debug
+          
+          # Test export prod-debug profile (includes Cartesi machine hash)
+          echo "Testing export prod-debug profile..."
+          node ../../packages/cli/dist/cli.js export prod-debug ./test-export-prod-debug
+          ls -la ./test-export-prod-debug/
+          
+          # Verify Cartesi machine hash file is present
+          if [ -f "./test-export-prod-debug/vc-cm-snapshot.hash" ]; then
+            echo "✅ Cartesi machine hash file found in export"
+            cat ./test-export-prod-debug/vc-cm-snapshot.hash
+          else
+            echo "❌ Cartesi machine hash file missing from export"
+            exit 1
+          fi
           
           # Test export with invalid profile
           node ../../packages/cli/dist/cli.js export dev ./test-export-dev 2>&1 | grep -q "Invalid profile" || echo "Invalid profile error handling test completed"
@@ -208,7 +225,7 @@ jobs:
           node ../../packages/cli/dist/cli.js export stage 2>&1 | grep -q "requires exactly 2 arguments" || echo "Missing arguments error handling test completed"
           
           # Clean up
-          rm -rf ./test-export-stage
+          rm -rf ./test-export-stage ./test-export-prod-debug
 
       - name: Test CLI error handling
         run: |
