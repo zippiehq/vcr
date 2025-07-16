@@ -66,6 +66,7 @@ export function handleBuildCommand(args: string[]): void {
   let noDepot = false;
   let forceDockerTar = false; // Force using Docker for tar creation
   let useTarContext: boolean | undefined = undefined; // Will set default after parsing profile
+  let turbo = false; // Enable multi-core QEMU for stage profiles
 
   // Parse build arguments
   for (let i = 1; i < args.length; i++) {
@@ -98,6 +99,8 @@ export function handleBuildCommand(args: string[]): void {
       useTarContext = false;
     } else if (arg === '--force-docker-tar') {
       forceDockerTar = true;
+    } else if (arg === '--turbo') {
+      turbo = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
@@ -133,7 +136,7 @@ export function handleBuildCommand(args: string[]): void {
     checkRiscv64Support();
   }
 
-  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar);
+  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo);
 }
 
 export function handleUpCommand(args: string[]): void {
@@ -150,6 +153,7 @@ export function handleUpCommand(args: string[]): void {
   let noDepot = false;
   let forceDockerTar = false; // Force using Docker for tar creation
   let useTarContext: boolean | undefined = undefined; // Will set default after parsing profile
+  let turbo = false; // Enable multi-core QEMU for stage profiles
 
   // Parse up arguments
   for (let i = 1; i < args.length; i++) {
@@ -184,6 +188,8 @@ export function handleUpCommand(args: string[]): void {
       useTarContext = false;
     } else if (arg === '--force-docker-tar') {
       forceDockerTar = true;
+    } else if (arg === '--turbo') {
+      turbo = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
@@ -219,7 +225,7 @@ export function handleUpCommand(args: string[]): void {
     checkRiscv64Support();
   }
 
-  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar);
+  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo);
 }
 
 // Helper functions that need to be copied from cli.ts
@@ -659,7 +665,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   }
 }
 
-export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false, useTarContext = true, forceDockerTar = false): string | undefined {
+export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
@@ -844,7 +850,7 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   }
 }
 
-export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false, useTarContext = true, forceDockerTar = false) {
+export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false) {
   console.log('Starting development environment...');
   
   try {
@@ -876,7 +882,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     checkVsockSupport();
     
     // Build the container
-    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar);
+    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo);
     
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     let needsUpdate = false;
@@ -929,7 +935,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     if (needsUpdate) {
       // Get the cache directory that was used during the build
       const buildCacheDir = getCacheDirectory(imageTag);
-      generateDockerCompose(imageTag, profile, ociTarPath, buildCacheDir);
+      generateDockerCompose(imageTag, profile, ociTarPath, buildCacheDir, turbo);
       console.log(`Generated Docker Compose config: ${composePath}`);
     }
     

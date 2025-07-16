@@ -94,6 +94,7 @@ function showHelp() {
   🏗️  --depot                             Use depot build instead of docker buildx
   🚫 --no-tar-context                    Disable deterministic tar context
   🐳 --force-docker-tar                  Force using Docker for tar creation
+  ⚡ --turbo                              Enable multi-core QEMU (stage profiles only)
   💻 --system                            Target system instead of container
   📺 -f, --follow                        Follow logs in real-time
 

@@ -137,7 +137,7 @@ ${services}${files}`;
   return yamlPath;
 }
 
-export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string, cacheDir?: string) {
+export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string, cacheDir?: string, turbo = false) {
   // Use the image tag directly since the OCI image is loaded into Docker
   const imageReference = imageTag;
   
@@ -169,16 +169,18 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
         socat tcp-listen:8022,fork VSOCK-CONNECT:1:8022 &
         sleep 1
         ps ux
-qemu-system-riscv64 \
-  --machine virt,memory-backend=mem0 \
-  --kernel /work/vc${debugSuffix}.qemu-kernel \
-  -nographic \
-  -object memory-backend-memfd,id=mem0,size=512M \
-  -append "root=/dev/vda rootfstype=squashfs console=ttyS0" \
-  -drive "file=/work/vc${debugSuffix}.squashfs,format=raw,if=virtio" \
-  -chardev socket,id=c,path=/tmp/vhost.socket \
-  -device vhost-user-vsock-pci,chardev=c \
-  -monitor none \
+        qemu-system-riscv64 \\
+  --machine virt,memory-backend=mem0 \\
+  -cpu rv64,sscofpmf=true \\
+  --kernel /work/vc${debugSuffix}.qemu-kernel \\
+  -nographic \\
+  ${turbo ? '-smp $(nproc) \\' : ''}
+  -object memory-backend-memfd,id=mem0,size=512M \\
+  -append "root=/dev/vda rootfstype=squashfs console=ttyS0" \\
+  -drive "file=/work/vc${debugSuffix}.squashfs,format=raw,if=virtio" \\
+  -chardev socket,id=c,path=/tmp/vhost.socket \\
+  -device vhost-user-vsock-pci,chardev=c \\
+  -monitor none \\
   -serial stdio`
       ],
       tty: true,
