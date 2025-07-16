@@ -136,13 +136,6 @@ export function handleBuildCommand(args: string[]): void {
     checkRiscv64Support();
   }
 
-  // Warn about turbo flag performance characteristics
-  if (turbo && (profile === 'stage' || profile === 'stage-release')) {
-    console.log('⚠️  Warning: --turbo flag enables multi-core QEMU emulation');
-    console.log('   Performance will NOT be representative of production (Cartesi Machine)');
-    console.log('   Use for faster development/testing only\n');
-  }
-
   buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo);
 }
 
@@ -230,13 +223,6 @@ export function handleUpCommand(args: string[]): void {
   // Check RISC-V support if needed
   if (profile !== 'dev') {
     checkRiscv64Support();
-  }
-
-  // Warn about turbo flag performance characteristics
-  if (turbo && (profile === 'stage' || profile === 'stage-release')) {
-    console.log('⚠️  Warning: --turbo flag enables multi-core QEMU emulation');
-    console.log('   Performance will NOT be representative of production (Cartesi Machine)');
-    console.log('   Use for faster development/testing only\n');
   }
 
   runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo);
@@ -848,6 +834,20 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       buildLinuxKitImage(yamlPath, profile, ociTarPath, cacheDir, forceRebuild);
     }
     
+    // Warn about turbo flag performance characteristics
+    if (turbo && (profile === 'stage' || profile === 'stage-release')) {
+      console.log('\n⚠️  Performance Note: --turbo flag enabled multi-core QEMU emulation');
+      console.log('   This provides faster development experience but performance will NOT');
+      console.log('   be representative of production (Cartesi Machine)');
+    }
+    
+    // Performance note for dev profile
+    if (profile === 'dev') {
+      console.log('\n💡 Performance Note: Using native platform (fastest development)');
+      console.log('   This provides maximum performance but runs on your native architecture');
+      console.log('   For RISC-V testing, use stage/prod profiles');
+    }
+    
     return ociTarPath;
   } catch (err) {
     console.error('Error building image:', err);
@@ -989,6 +989,20 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     console.log('- To view container logs: vcr logs');
     console.log('- To follow container logs: vcr logs -f');
     console.log('- To view system logs: vcr logs --system');
+    
+    // Warn about turbo flag performance characteristics
+    if (turbo && (profile === 'stage' || profile === 'stage-release')) {
+      console.log('\n⚠️  Performance Note: --turbo flag enabled multi-core QEMU emulation');
+      console.log('   This provides faster development experience but performance will NOT');
+      console.log('   be representative of production (Cartesi Machine)');
+    }
+    
+    // Performance note for dev profile
+    if (profile === 'dev') {
+      console.log('\n💡 Performance Note: Using native platform (fastest development)');
+      console.log('   This provides maximum performance but runs on your native architecture');
+      console.log('   For RISC-V testing, use stage/prod profiles');
+    }
     
   } catch (err) {
     console.error('Error starting development environment:', err);
