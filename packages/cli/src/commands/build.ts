@@ -22,6 +22,9 @@ import {
 import { checkVsockSupport } from '../checks';
 import { generateLinuxKitYaml, generateDockerCompose } from '../generate';
 
+// Import tar context builder
+import { TarContextBuilder } from '../tar-context';
+
 // Function to detect current profile from running containers
 function detectCurrentProfile(): string | null {
   const pathHash = getPathHash();
@@ -61,7 +64,9 @@ export function handleBuildCommand(args: string[]): void {
   let forceRebuild = false;
   let useDepot = false;
   let noDepot = false;
-  
+  let forceDockerTar = false; // Force using Docker for tar creation
+  let useTarContext: boolean | undefined = undefined; // Will set default after parsing profile
+
   // Parse build arguments
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -89,12 +94,25 @@ export function handleBuildCommand(args: string[]): void {
       useDepot = true;
     } else if (arg === '--no-depot') {
       noDepot = true;
+    } else if (arg === '--no-tar-context') {
+      useTarContext = false;
+    } else if (arg === '--force-docker-tar') {
+      forceDockerTar = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
     }
   }
-  
+
+  // Set useTarContext default based on profile if not overridden
+  if (useTarContext === undefined) {
+    if (["stage", "stage-release", "prod", "prod-debug"].includes(profile)) {
+      useTarContext = true;
+    } else {
+      useTarContext = false;
+    }
+  }
+
   // Auto-detect depot.json if neither --depot nor --no-depot was specified
   if (!useDepot && !noDepot) {
     const depotJsonPath = join(cwd(), 'depot.json');
@@ -103,19 +121,19 @@ export function handleBuildCommand(args: string[]): void {
       console.log('📦 depot.json detected, using depot build');
     }
   }
-  
+
   if (!imageTag) {
     const pathHash = getPathHash();
     imageTag = `vcr-build-${pathHash}:latest`;
     console.log(`No tag provided, using default: ${imageTag}`);
   }
-  
+
   // Check RISC-V support if needed
   if (profile !== 'dev') {
     checkRiscv64Support();
   }
-  
-  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot);
+
+  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar);
 }
 
 export function handleUpCommand(args: string[]): void {
@@ -130,7 +148,9 @@ export function handleUpCommand(args: string[]): void {
   let forceRestart = false;
   let useDepot = false;
   let noDepot = false;
-  
+  let forceDockerTar = false; // Force using Docker for tar creation
+  let useTarContext: boolean | undefined = undefined; // Will set default after parsing profile
+
   // Parse up arguments
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -160,12 +180,25 @@ export function handleUpCommand(args: string[]): void {
       useDepot = true;
     } else if (arg === '--no-depot') {
       noDepot = true;
+    } else if (arg === '--no-tar-context') {
+      useTarContext = false;
+    } else if (arg === '--force-docker-tar') {
+      forceDockerTar = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
     }
   }
-  
+
+  // Set useTarContext default based on profile if not overridden
+  if (useTarContext === undefined) {
+    if (["stage", "stage-release", "prod", "prod-debug"].includes(profile)) {
+      useTarContext = true;
+    } else {
+      useTarContext = false;
+    }
+  }
+
   // Auto-detect depot.json if neither --depot nor --no-depot was specified
   if (!useDepot && !noDepot) {
     const depotJsonPath = join(cwd(), 'depot.json');
@@ -174,19 +207,19 @@ export function handleUpCommand(args: string[]): void {
       console.log('📦 depot.json detected, using depot build');
     }
   }
-  
+
   if (!imageTag) {
     const pathHash = getPathHash();
     imageTag = `vcr-build-${pathHash}:latest`;
     console.log(`No tag provided, using default: ${imageTag}`);
   }
-  
+
   // Check RISC-V support if needed
   if (profile !== 'dev') {
     checkRiscv64Support();
   }
-  
-  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot);
+
+  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar);
 }
 
 // Helper functions that need to be copied from cli.ts
@@ -626,7 +659,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   }
 }
 
-export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false): string | undefined {
+export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false, useTarContext = true, forceDockerTar = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
@@ -663,6 +696,26 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   const safeImageName = imageTag.replace(/[:/]/g, '-');
   const ociTarPath = join(cacheDir, `${safeImageName}.tar`);
   
+  let contextBuilder: TarContextBuilder | undefined;
+  let contextTarPath: string | undefined;
+  
+  if (useTarContext) {
+    // Create deterministic tar context
+    contextBuilder = new TarContextBuilder({
+      contextPath: currentDir,
+      outputPath: join(cacheDir, 'build-context.tar'),
+      deterministic: true,
+      forceDocker: forceDockerTar
+    });
+    
+    // Get context hash for caching
+    const contextHash = contextBuilder.getContextHash();
+    console.log(`📦 Build context hash: ${contextHash}`);
+    
+    // Create the deterministic tar context
+    contextTarPath = contextBuilder.createTar();
+  }
+  
   let buildCommand: string;
   
   if (useDepot) {
@@ -682,8 +735,12 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       buildArgs.push('--output', `type=oci,dest=${ociTarPath},name=${imageTag}`);
     }
     
-    // Add context directory
-    buildArgs.push('.');
+    // Use tar file as context if available, otherwise use directory
+    if (contextTarPath) {
+      buildArgs.push('--file', contextTarPath);
+    } else {
+      buildArgs.push('.');
+    }
     
     buildCommand = `depot ${buildArgs.join(' ')}`;
   } else {
@@ -702,8 +759,12 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       buildArgs.push('--output', `type=docker,name=${imageTag}`);
     }
     
-    // Add context directory
-    buildArgs.push('.');
+    // Use tar file as context if available, otherwise use directory
+    if (contextTarPath) {
+      buildArgs.push('--file', contextTarPath);
+    } else {
+      buildArgs.push('.');
+    }
     
     buildCommand = `docker ${buildArgs.join(' ')}`;
   }
@@ -741,10 +802,19 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   } catch (err) {
     console.error('Error building image:', err);
     process.exit(1);
+  } finally {
+    // Clean up the context tar file
+    if (contextBuilder) {
+      try {
+        contextBuilder.cleanup();
+      } catch (cleanupErr) {
+        console.warn('Warning: Could not clean up context tar file:', cleanupErr);
+      }
+    }
   }
 }
 
-export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false) {
+export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false, useTarContext = true, forceDockerTar = false) {
   console.log('Starting development environment...');
   
   try {
@@ -776,7 +846,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     checkVsockSupport();
     
     // Build the container
-    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot);
+    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar);
     
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     let needsUpdate = false;

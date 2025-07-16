@@ -92,6 +92,8 @@ function showHelp() {
   🏷️  -t, --tag <name:tag>                Custom image tag
   🔄 --force-rebuild                     Force rebuild all artifacts
   🏗️  --depot                             Use depot build instead of docker buildx
+  🚫 --no-tar-context                    Disable deterministic tar context
+  🐳 --force-docker-tar                  Force using Docker for tar creation
   💻 --system                            Target system instead of container
   📺 -f, --follow                        Follow logs in real-time
 
