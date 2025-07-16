@@ -1,6 +1,8 @@
 import { execSync } from 'child_process';
 import { existsSync, mkdirSync, copyFileSync } from 'fs';
 import { join, resolve } from 'path';
+import { homedir } from 'os';
+import { createHash } from 'crypto';
 import { getComposeCacheDirectory, detectProfileAndSshKey, getPathHash } from '../cli';
 
 export function handleExportCommand(args: string[]): void {
@@ -34,9 +36,26 @@ export function handleExportCommand(args: string[]): void {
       console.log(`✅ Created export directory: ${exportPath}`);
     }
 
-    // Get cache directory
+    // Get cache directory (same logic as build process)
     const pathHash = getPathHash();
-    const cacheDir = getComposeCacheDirectory();
+    const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
+    
+    // For export, we need to find the actual cache directory with the image hash
+    // Since we don't have the image tag, we'll look for the most recent subdirectory
+    let cacheDir = baseCacheDir;
+    
+    if (existsSync(baseCacheDir)) {
+      try {
+        // Find the most recent subdirectory (which should contain our build artifacts)
+        const subdirs = execSync(`ls -1t "${baseCacheDir}" | head -1`, { encoding: 'utf8' }).trim();
+        if (subdirs) {
+          cacheDir = join(baseCacheDir, subdirs);
+        }
+      } catch (err) {
+        // If we can't find a subdirectory, use the base directory
+        console.log('⚠️  Could not determine exact cache subdirectory, using base directory');
+      }
+    }
     
     // Determine debug suffix for file names
     const includeDebugTools = profile === 'stage' || profile === 'prod-debug';
