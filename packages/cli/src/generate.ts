@@ -174,7 +174,7 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
   -cpu rv64,sscofpmf=true \\
   --kernel /work/vc${debugSuffix}.qemu-kernel \\
   -nographic \\
-  ${turbo ? '-smp $(nproc) \\' : ''}
+  ${turbo ? '-smp $(nproc) \\' : '\\'}
   -object memory-backend-memfd,id=mem0,size=512M \\
   -append "root=/dev/vda rootfstype=squashfs console=ttyS0" \\
   -drive "file=/work/vc${debugSuffix}.squashfs,format=raw,if=virtio" \\
