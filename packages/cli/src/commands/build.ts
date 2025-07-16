@@ -717,6 +717,7 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   }
   
   let buildCommand: string;
+  let useStdin = false;
   
   if (useDepot) {
     // Use depot build
@@ -735,9 +736,10 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       buildArgs.push('--output', `type=oci,dest=${ociTarPath},name=${imageTag}`);
     }
     
-    // Use tar file as context if available, otherwise use directory
+    // Use tar file via stdin if available, otherwise use directory
     if (contextTarPath) {
-      buildArgs.push('--file', contextTarPath);
+      buildArgs.push('-'); // Use stdin for tar context
+      useStdin = true;
     } else {
       buildArgs.push('.');
     }
@@ -759,9 +761,10 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
       buildArgs.push('--output', `type=docker,name=${imageTag}`);
     }
     
-    // Use tar file as context if available, otherwise use directory
+    // Use tar file via stdin if available, otherwise use directory
     if (contextTarPath) {
-      buildArgs.push('--file', contextTarPath);
+      buildArgs.push('-'); // Use stdin for tar context
+      useStdin = true;
     } else {
       buildArgs.push('.');
     }
@@ -773,11 +776,22 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   console.log(`${buildCommand}\n`);
   
   try {
-    execSync(buildCommand, { 
-      stdio: 'inherit', 
-      cwd: currentDir,
-      env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
-    });
+    if (useStdin && contextTarPath) {
+      // Pipe tar file via stdin
+      const tarContent = readFileSync(contextTarPath);
+      execSync(buildCommand, { 
+        input: tarContent,
+        stdio: ['pipe', 'inherit', 'inherit'], 
+        cwd: currentDir,
+        env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
+      });
+    } else {
+      execSync(buildCommand, { 
+        stdio: 'inherit', 
+        cwd: currentDir,
+        env: { ...process.env, SOURCE_DATE_EPOCH: '0' }
+      });
+    }
     console.log(`\n✅ Build completed successfully!`);
     if (useDepot && profile === 'dev') {
       console.log(`Docker image loaded with tag: ${imageTag}`);
