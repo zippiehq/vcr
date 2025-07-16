@@ -212,7 +212,8 @@ jobs:
           # Verify Cartesi machine hash file is present
           if [ -f "./test-export-prod-debug/vc-cm-snapshot.hash" ]; then
             echo "✅ Cartesi machine hash file found in export"
-            cat ./test-export-prod-debug/vc-cm-snapshot.hash
+            echo "🔐 Cartesi machine hash (hex):"
+            hexdump -C ./test-export-prod-debug/vc-cm-snapshot.hash
           else
             echo "❌ Cartesi machine hash file missing from export"
             exit 1
