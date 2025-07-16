@@ -253,7 +253,7 @@ export class TarContextBuilder {
     }
     
     if (this.deterministic && capabilities.supportsMtime) {
-      tarArgs.push('--mtime', '1970-01-01');
+      tarArgs.push('--mtime', '1752444000');
     }
     
     const tarCommand = `tar ${tarArgs.join(' ')}`;
@@ -287,7 +287,7 @@ export class TarContextBuilder {
       '--format', 'gnu',
       '--numeric-owner',
       '--sort=name',
-      '--mtime', '1970-01-01',
+      '--mtime', '1752444000',
       '--files-from', '/tmp/filelist.txt',
     ];
     
