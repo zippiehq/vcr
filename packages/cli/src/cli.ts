@@ -9,6 +9,7 @@ import { handleBuildCommand, handleUpCommand } from './commands/build';
 import { handleLogsCommand, handleExecCommand, handleShellCommand, handleCatCommand } from './commands/container';
 import { pruneVcrLocal, pruneVcr } from './commands/prune';
 import { handleCreateCommand } from './commands/create';
+import { handleExportCommand } from './commands/export';
 import { checkDockerAvailable } from './checks';
 
 export function getPathHash(): string {
@@ -74,6 +75,7 @@ Usage:
   vcr exec [--system] <command>      Execute command in container or system
   vcr shell [--system]               Open shell in container or system
   vcr cat <file-path>                View file contents in container
+  vcr export <profile> <path>        Export profile artifacts to directory
   vcr prune [--local]                Clean up VCR environment (cache, registry, builder)
   vcr --help                         Show this help message
 
@@ -139,6 +141,9 @@ Examples:
   vcr shell --system                                   # Open shell in system (VM/container)
   vcr cat /app/config.json                             # View file in container
   vcr cat /app/logs/app.log                            # View log file
+  vcr export prod ./my-deployment                      # Export prod profile artifacts
+  vcr export stage-release ./stage-artifacts           # Export stage-release artifacts
+  vcr export prod-debug ./debug-deployment             # Export prod-debug artifacts
   vcr prune                                            # Clean up entire VCR environment
   vcr prune --local                                    # Clean up only current project
 
@@ -249,6 +254,10 @@ function main() {
       
     case 'cat':
       handleCatCommand(args);
+      break;
+      
+    case 'export':
+      handleExportCommand(args);
       break;
       
     case 'prune':

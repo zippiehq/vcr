@@ -188,6 +188,28 @@ jobs:
           # Test global prune
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune && echo "Global prune test completed"
 
+      - name: Test CLI export command
+        run: |
+          echo "Testing export command..."
+          cd packages/sample-python
+          
+          # Build a profile first
+          node ../../packages/cli/dist/cli.js build stage
+          
+          # Test export command
+          echo "Testing export stage profile..."
+          node ../../packages/cli/dist/cli.js export stage ./test-export-stage
+          ls -la ./test-export-stage/
+          
+          # Test export with invalid profile
+          node ../../packages/cli/dist/cli.js export dev ./test-export-dev 2>&1 | grep -q "Invalid profile" || echo "Invalid profile error handling test completed"
+          
+          # Test export with missing arguments
+          node ../../packages/cli/dist/cli.js export stage 2>&1 | grep -q "requires exactly 2 arguments" || echo "Missing arguments error handling test completed"
+          
+          # Clean up
+          rm -rf ./test-export-stage
+
       - name: Test CLI error handling
         run: |
           echo "Testing error handling..."
