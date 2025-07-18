@@ -68,6 +68,7 @@ export function handleBuildCommand(args: string[]): void {
   let useTarContext: boolean | undefined = undefined; // Will set default after parsing profile
   let turbo = false; // Enable multi-core QEMU for stage profiles
   let guestAgentImage: string | undefined; // Guest agent image for prod/prod-debug profiles
+  let hot = false; // Enable hot reloading for dev profile
 
   // Parse build arguments
   for (let i = 1; i < args.length; i++) {
@@ -110,6 +111,8 @@ export function handleBuildCommand(args: string[]): void {
         console.error('Error: --guest-agent-image requires a value');
         process.exit(1);
       }
+    } else if (arg === '--hot') {
+      hot = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
@@ -136,7 +139,9 @@ export function handleBuildCommand(args: string[]): void {
 
   if (!imageTag) {
     const pathHash = getPathHash();
-    imageTag = `vcr-build-${pathHash}:latest`;
+    const baseTag = `vcr-build-${pathHash}:latest`;
+    // Add -hot suffix for hot reload builds
+    imageTag = (profile === 'dev' && hot) ? baseTag.replace(':latest', '-hot:latest') : baseTag;
     console.log(`No tag provided, using default: ${imageTag}`);
   }
 
@@ -145,7 +150,7 @@ export function handleBuildCommand(args: string[]): void {
     checkRiscv64Support();
   }
 
-  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage);
+  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
 }
 
 export function handleUpCommand(args: string[]): void {
@@ -164,6 +169,7 @@ export function handleUpCommand(args: string[]): void {
   let useTarContext: boolean | undefined = undefined; // Will set default after parsing profile
   let turbo = false; // Enable multi-core QEMU for stage profiles
   let guestAgentImage: string | undefined; // Guest agent image for prod/prod-debug profiles
+  let hot = false; // Enable hot reloading for dev profile
 
   // Parse up arguments
   for (let i = 1; i < args.length; i++) {
@@ -208,6 +214,8 @@ export function handleUpCommand(args: string[]): void {
         console.error('Error: --guest-agent-image requires a value');
         process.exit(1);
       }
+    } else if (arg === '--hot') {
+      hot = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
@@ -243,7 +251,7 @@ export function handleUpCommand(args: string[]): void {
     checkRiscv64Support();
   }
 
-  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage);
+  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
 }
 
 // Helper functions that need to be copied from cli.ts
@@ -690,7 +698,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   }
 }
 
-export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string): string | undefined {
+export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, hot = false): string | undefined {
   const currentDir = cwd();
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
@@ -787,6 +795,10 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
     if (["stage", "stage-release", "prod", "prod-debug"].includes(profile)) {
       buildArgs.push('--build-arg', 'SOURCE_DATE_EPOCH=1752444000');
     }
+    // Add hot reload build arg for dev+hot
+    if (profile === 'dev' && hot) {
+      buildArgs.push('--build-arg', 'HOT_RELOAD=true');
+    }
     
     if (profile === 'dev') {
       // For dev profile, only output to Docker
@@ -819,7 +831,10 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
     if (["stage", "stage-release", "prod", "prod-debug"].includes(profile)) {
       buildArgs.push('--build-arg', 'SOURCE_DATE_EPOCH=1752444000');
     }
-    
+    // Add hot reload build arg for dev+hot
+    if (profile === 'dev' && hot) {
+      buildArgs.push('--build-arg', 'HOT_RELOAD=true');
+    }
     // Set output based on profile
     if (profile === 'dev') {
       // For dev profile, load into Docker
@@ -921,7 +936,7 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   }
 }
 
-export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string) {
+export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, hot = false) {
   console.log('Starting development environment...');
   
   try {
@@ -953,7 +968,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     checkVsockSupport();
     
     // Build the container
-    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage);
+    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
     
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     let needsUpdate = false;
@@ -1006,7 +1021,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     if (needsUpdate) {
       // Get the cache directory that was used during the build
       const buildCacheDir = getCacheDirectory(imageTag, profile, guestAgentImage);
-      generateDockerCompose(imageTag, profile, ociTarPath, buildCacheDir, turbo, guestAgentImage);
+      generateDockerCompose(imageTag, profile, ociTarPath, buildCacheDir, turbo, guestAgentImage, profile === 'dev' && hot);
       console.log(`Generated Docker Compose config: ${composePath}`);
     }
     

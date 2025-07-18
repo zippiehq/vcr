@@ -42,7 +42,16 @@ RUN cd /app; python3 -m compileall --invalidation-mode checked-hash .
 
 # Set up environment
 RUN mkdir -p /app
-WORKDIR /app
+
+ARG HOT_RELOAD=false
+ENV HOT_RELOAD=${HOT_RELOAD}
+
+# Install watchgod in dev mode
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+--mount=type=cache,target=/var/lib/apt,sharing=locked if [ "$HOT_RELOAD" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends python3-watchfiles && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Change ownership to app user
 RUN chown -R app:app /app
@@ -53,5 +62,7 @@ USER app
 # Expose port
 EXPOSE 8080
 
+WORKDIR /app
 # Run the application
-CMD ["python3", "app.py"] 
+# Entrypoint logic: use watchfiles if HOT_RELOAD is true, else run normally
+ENTRYPOINT ["/bin/sh", "-c", "if [ \"$HOT_RELOAD\" = \"true\" ]; then exec watchfiles app.run_app; else exec python3 app.py; fi"] 

@@ -137,7 +137,7 @@ ${services}${files}`;
   return yamlPath;
 }
 
-export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string, cacheDir?: string, turbo = false, guestAgentImage?: string) {
+export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string, cacheDir?: string, turbo = false, guestAgentImage?: string, hot = false) {
   // Use the image tag directly since the OCI image is loaded into Docker
   const imageReference = imageTag;
   
@@ -258,13 +258,22 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
     };
   } else {
     // Default for dev profile
+    const volumes = [`${pathHash}_vcr_shared_data:/media/vcr`];
+    
+    // Add source code mount for hot reloading
+    if (hot) {
+      const currentDir = process.cwd();
+      volumes.push(`${currentDir}:/app`);
+    }
+    
     isolatedServiceConfig = {
       image: imageReference,
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
-      volumes: [`${pathHash}_vcr_shared_data:/media/vcr`],
+      volumes: volumes,
       restart: "no",
+      // Remove command override; Dockerfile entrypoint handles hot reload
       healthcheck: {
         test: ['CMD', 'curl', '-f', 'http://localhost:8080/health'],
         interval: '30s',
@@ -282,8 +291,10 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
         `vcr.image.tag=${imageTag}`,
         `vcr.image.path=${ociTarPath || 'none'}`,
         `vcr.build.timestamp=${new Date().toISOString()}`,
-        `vcr.path.hash=${pathHash}`
+        `vcr.path.hash=${pathHash}`,
+        ...(hot ? [`vcr.hot.reload=true`] : [])
       ]
+      // No build or environment keys here
     };
   }
   

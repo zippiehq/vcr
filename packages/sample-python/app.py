@@ -19,6 +19,10 @@ async def health(request):
 app = web.Application()
 app.router.add_get('/health', health)
 
-if __name__ == '__main__':
+def run_app():
+    """Function to run the app, used by watchgod/watchfiles"""
     port = int(os.environ.get('PORT', 8080))
-    web.run_app(app, host='0.0.0.0', port=port) 
+    web.run_app(app, host='0.0.0.0', port=port)
+
+if __name__ == '__main__':
+    run_app() 
