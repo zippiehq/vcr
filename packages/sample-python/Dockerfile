@@ -46,6 +46,9 @@ RUN mkdir -p /app
 ARG HOT_RELOAD=false
 ENV HOT_RELOAD=${HOT_RELOAD}
 
+# Add label to indicate hot reload support
+LABEL vcr.hot-reload=${HOT_RELOAD}
+
 # Install watchgod in dev mode
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 --mount=type=cache,target=/var/lib/apt,sharing=locked if [ "$HOT_RELOAD" = "true" ]; then \

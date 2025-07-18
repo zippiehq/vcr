@@ -1,6 +1,6 @@
 import { execSync, spawnSync } from 'child_process';
 import { join } from 'path';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, watch } from 'fs';
 import { cwd } from 'process';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
@@ -51,6 +51,20 @@ function needsProfileChange(currentProfile: string | null, requestedProfile: str
     return true; // No current profile, need to start
   }
   return currentProfile !== requestedProfile;
+}
+
+// Check if Docker image has hot reload support
+function hasHotReloadSupport(imageTag: string): boolean {
+  try {
+    const label = execSync(`docker inspect ${imageTag} --format '{{index .Config.Labels "vcr.hot-reload"}}'`, { 
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'] // Suppress stderr
+    }).trim();
+    return label === 'true';
+  } catch (err) {
+    // If we can't inspect the image or label doesn't exist, assume no hot reload
+    return false;
+  }
 }
 
 export function handleBuildCommand(args: string[]): void {
@@ -1034,7 +1048,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
       if (containersExist) {
         // Containers exist, force recreate only the isolated_service
         console.log('Force recreating isolated_service...');
-        execSync(`docker compose -f ${composePath} up -d --force-recreate isolated_service`, { stdio: 'inherit' });
+        execSync(`docker compose -f ${composePath} up -d --force-recreate --wait isolated_service`, { stdio: 'inherit' });
       } else {
         // First startup, just start all services normally
         console.log('Starting all services...');
@@ -1084,6 +1098,27 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
       console.log('   For RISC-V testing, use stage/prod profiles');
     }
     
+    // Start file watcher for stage/prod profiles with hot reload
+    if (hot && (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug')) {
+      startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage);
+    }
+    
+    // For dev profile with hot reload, check if image supports in-container file watching
+    if (hot && profile === 'dev') {
+      if (hasHotReloadSupport(imageTag)) {
+        console.log(`\n🔥 Hot reload enabled for dev profile (in-container file watching)`);
+        console.log(`📁 Source code mounted to /app - changes will trigger instant restarts\n`);
+      } else {
+        console.log(`\n🔥 Hot reload enabled for dev profile (rebuild on changes)`);
+        console.log(`📁 Watching for changes in: ${cwd()}`);
+        console.log(`🔄 Will rebuild and restart on file changes`);
+        console.log(`⏹️  Press Ctrl+C to stop watching and exit\n`);
+        
+        // Start file watcher for dev profile when image doesn't support in-container watching
+        startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage);
+      }
+    }
+    
   } catch (err) {
     console.error('Error starting development environment:', err);
     process.exit(1);
@@ -1113,4 +1148,83 @@ function buildDevContainer() {
     console.error('Error building development container:', err);
     process.exit(1);
   }
+} 
+
+// File watcher for stage/prod hot reload
+function startFileWatcher(imageTag: string, profile: string, cacheDir?: string, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string) {
+  const currentDir = cwd();
+  console.log(`\n🔥 Hot reload enabled for ${profile} profile`);
+  console.log(`📁 Watching for changes in: ${currentDir}`);
+  console.log(`🔄 Will rebuild and restart on file changes`);
+  console.log(`⏹️  Press Ctrl+C to stop watching and exit\n`);
+
+  let isRebuilding = false;
+  let rebuildTimeout: NodeJS.Timeout | null = null;
+
+  const triggerRebuild = () => {
+    if (isRebuilding) {
+      console.log(`⏳ Rebuild already in progress, skipping...`);
+      return;
+    }
+
+    isRebuilding = true;
+    console.log(`\n🔄 File change detected! Rebuilding and restarting...`);
+
+    try {
+      // Just call runDevEnvironment again - it will handle rebuild and restart
+      runDevEnvironment(imageTag, profile, cacheDir, true, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false); // hot=false to avoid infinite recursion
+      console.log(`✅ Environment rebuilt and restarted successfully!`);
+      
+    } catch (err) {
+      console.error(`❌ Error during rebuild:`, err);
+    } finally {
+      isRebuilding = false;
+    }
+  };
+
+  const debouncedRebuild = () => {
+    if (rebuildTimeout) {
+      clearTimeout(rebuildTimeout);
+    }
+    rebuildTimeout = setTimeout(triggerRebuild, 1000); // Debounce for 1 second
+  };
+
+  // Watch the current directory recursively
+  const watcher = watch(currentDir, { recursive: true }, (eventType, filename) => {
+    if (!filename) return;
+    
+    // Skip certain files/directories
+    const skipPatterns = [
+      '.git', '.vscode', 'node_modules', '__pycache__', '.pytest_cache',
+      '.cache', 'target', 'dist', 'build', '.mypy_cache', '.coverage',
+      '*.pyc', '*.pyo', '*.log', '*.tmp', '*.swp', '*.swo'
+    ];
+    
+    const shouldSkip = skipPatterns.some(pattern => {
+      if (pattern.includes('*')) {
+        return filename.endsWith(pattern.replace('*', ''));
+      }
+      return filename.includes(pattern);
+    });
+    
+    if (shouldSkip) return;
+    
+    console.log(`📝 File change detected: ${filename}`);
+    debouncedRebuild();
+  });
+
+  // Handle process termination
+  process.on('SIGINT', () => {
+    console.log(`\n🛑 Stopping file watcher...`);
+    watcher.close();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    console.log(`\n🛑 Stopping file watcher...`);
+    watcher.close();
+    process.exit(0);
+  });
+
+  return watcher;
 } 
