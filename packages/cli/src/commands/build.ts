@@ -1100,7 +1100,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     
     // Start file watcher for stage/prod profiles with hot reload
     if (hot && (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug')) {
-      startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage);
+      startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false, hot);
     }
     
     // For dev profile with hot reload, check if image supports in-container file watching
@@ -1115,7 +1115,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
         console.log(`⏹️  Press Ctrl+C to stop watching and exit\n`);
         
         // Start file watcher for dev profile when image doesn't support in-container watching
-        startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage);
+        startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, true, hot);
       }
     }
     
@@ -1151,12 +1151,14 @@ function buildDevContainer() {
 } 
 
 // File watcher for stage/prod hot reload
-function startFileWatcher(imageTag: string, profile: string, cacheDir?: string, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string) {
+function startFileWatcher(imageTag: string, profile: string, cacheDir?: string, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, skipMessage = false, hot = false) {
   const currentDir = cwd();
-  console.log(`\n🔥 Hot reload enabled for ${profile} profile`);
-  console.log(`📁 Watching for changes in: ${currentDir}`);
-  console.log(`🔄 Will rebuild and restart on file changes`);
-  console.log(`⏹️  Press Ctrl+C to stop watching and exit\n`);
+  if (!skipMessage) {
+    console.log(`\n🔥 Hot reload enabled for ${profile} profile`);
+    console.log(`📁 Watching for changes in: ${currentDir}`);
+    console.log(`🔄 Will rebuild and restart on file changes`);
+    console.log(`⏹️  Press Ctrl+C to stop watching and exit\n`);
+  }
 
   let isRebuilding = false;
   let rebuildTimeout: NodeJS.Timeout | null = null;
@@ -1171,9 +1173,22 @@ function startFileWatcher(imageTag: string, profile: string, cacheDir?: string, 
     console.log(`\n🔄 File change detected! Rebuilding and restarting...`);
 
     try {
-      // Just call runDevEnvironment again - it will handle rebuild and restart
-      runDevEnvironment(imageTag, profile, cacheDir, true, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false); // hot=false to avoid infinite recursion
-      console.log(`✅ Environment rebuilt and restarted successfully!`);
+      if (profile === 'dev') {
+        // For dev profile, just rebuild the image and swap the container
+        console.log('Building new image...');
+        buildImage(imageTag, profile, cacheDir, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
+        
+        // Swap out just the isolated_service container
+        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+        console.log('Swapping isolated_service container...');
+        execSync(`docker compose -f ${composePath} up -d --force-recreate --wait isolated_service`, { stdio: 'inherit' });
+        
+        console.log(`✅ Dev environment rebuilt and restarted successfully!`);
+      } else {
+        // For stage/prod profiles, use the full rebuild approach
+        runDevEnvironment(imageTag, profile, cacheDir, true, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false); // hot=false to avoid infinite recursion
+        console.log(`✅ Environment rebuilt and restarted successfully!`);
+      }
       
     } catch (err) {
       console.error(`❌ Error during rebuild:`, err);
