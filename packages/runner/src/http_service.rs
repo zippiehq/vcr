@@ -41,27 +41,30 @@ impl<'a> HttpService<'a> {
 
                 info!("Waiting for response...");
                 run_machine_until_yield(self.machine)?;
-                let response_bytes = match receive_packet(self.machine)? {
-                    Some(packet) => {
+
+                let response_bytes = loop {
+                    let packet_opt = receive_packet(self.machine)?;
+
+                    if let Some(packet) = packet_opt {
                         if packet.hdr().op == VSOCK_OP_RW {
                             let payload = packet.payload();
                             if !payload.is_empty() {
                                 info!("Received data chunk from guest.");
-                                run_machine_until_yield(self.machine)?;
-                                payload.to_vec()
+                                break payload.to_vec();
                             } else {
-                                info!("Received end-of-transmission signal from guest.");
+                                info!("Received empty RW packet, waiting...");
+                                std::thread::sleep(std::time::Duration::from_secs(1));
                                 run_machine_until_yield(self.machine)?;
-                                Vec::new()
                             }
                         } else if packet.hdr().op == VSOCK_OP_SHUTDOWN {
                             info!("Guest has shut down the connection.");
-                            Vec::new()
-                        } else {
-                            Vec::new()
+                            break Vec::new();
                         }
+                    } else {
+                        info!("No packet received, waiting...");
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                        run_machine_until_yield(self.machine)?;
                     }
-                    None => Vec::new(),
                 };
 
                 let response_str = String::from_utf8_lossy(&response_bytes).to_string();

@@ -5,7 +5,8 @@ use std::io::Write;
 use std::path::Path;
 
 use cartesi_machine::{config::runtime::RuntimeConfig, machine::Machine};
-
+use tokio::time::Duration;
+use tokio::time::sleep;
 mod http_service;
 mod utils;
 use http_service::HttpService;
@@ -25,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut service = HttpService::connect(&mut machine, GUEST_PORT)?;
 
-    let get_request = "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    let get_request = "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
     info!("Performing GET request...");
     service.request(get_request)?;
 
