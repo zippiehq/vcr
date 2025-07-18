@@ -95,6 +95,7 @@ function showHelp() {
   🚫 --no-tar-context                    Disable deterministic tar context
   🐳 --force-docker-tar                  Force using Docker for tar creation
   ⚡ --turbo                              Enable multi-core QEMU (stage profiles only)
+  🤖 --guest-agent-image <image>         Custom guest agent image (prod/prod-debug only)
   💻 --system                            Target system instead of container
   📺 -f, --follow                        Follow logs in real-time
 
@@ -104,6 +105,7 @@ function showHelp() {
   🚀 vcr up dev                          # Build and run (fastest)
   🧪 vcr up stage                        # Build and run (RISC-V testing)
   🔐 vcr up prod                         # Build and run (verifiable)
+  🔐 vcr up prod --guest-agent-image my-registry/guest-agent:v2  # Custom guest agent
   📄 vcr logs                            # View application logs
   ⚡ vcr exec "ls -la"                   # Run command in container
   🛑 vcr down                            # Stop environment

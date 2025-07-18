@@ -24,7 +24,7 @@ function getCacheDirectory(ociTarPath?: string): string {
   return baseCacheDir;
 }
 
-export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir?: string, ociTarPath?: string) {
+export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir?: string, ociTarPath?: string, guestAgentImage?: string) {
   const pathHash = getPathHash();
   
   // Determine if debug tools should be included
@@ -54,8 +54,8 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   // LinuxKit will resolve this through its cache after import
   const imageReference = imageTag;
   
-  // Guest agent image
-  const guestAgentImage = process.env.CUSTOM_GUEST_AGENT_IMAGE || 'ghcr.io/zippiehq/vcr-guest-agent:latest';
+  // Guest agent image - use parameter if provided, otherwise fall back to environment variable or default
+  const finalGuestAgentImage = guestAgentImage || process.env.CUSTOM_GUEST_AGENT_IMAGE || 'ghcr.io/zippiehq/vcr-guest-agent:latest';
   
   // Build onboot section conditionally
   let onboot = '';
@@ -84,7 +84,7 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   }
   
   services += `  - name: guest-agent
-    image: ${guestAgentImage}
+    image: ${finalGuestAgentImage}
     net: host
     binds:
       - /dev:/dev
@@ -137,7 +137,7 @@ ${services}${files}`;
   return yamlPath;
 }
 
-export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string, cacheDir?: string, turbo = false) {
+export function generateDockerCompose(imageTag: string, profile: string, ociTarPath?: string, cacheDir?: string, turbo = false, guestAgentImage?: string) {
   // Use the image tag directly since the OCI image is loaded into Docker
   const imageReference = imageTag;
   
