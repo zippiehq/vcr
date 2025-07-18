@@ -5,21 +5,60 @@ import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { getComposeCacheDirectory, detectProfileAndSshKey, getPathHash } from '../cli';
 
+// Import the updated getCacheDirectory function from build.ts
+function getCacheDirectory(imageTag?: string, profile?: string, guestAgentImage?: string): string {
+  const pathHash = getPathHash();
+  const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
+  
+  if (imageTag) {
+    // Create a hash of the image tag for cache directory
+    let hashInput = imageTag;
+    
+    // For prod/prod-debug profiles, include guest-agent image in the hash
+    if (profile && (profile === 'prod' || profile === 'prod-debug') && guestAgentImage) {
+      hashInput += `:${guestAgentImage}`;
+    }
+    
+    const imageHash = createHash('sha256').update(hashInput).digest('hex').substring(0, 8);
+    return join(baseCacheDir, imageHash);
+  }
+  
+  return baseCacheDir;
+}
+
 export function handleExportCommand(args: string[]): void {
   try {
     // Parse export arguments
     if (args.length < 3) {
       console.error('Error: vcr export requires exactly 2 arguments: <profile> <path>');
-      console.log('Usage: vcr export <profile> <path>');
+      console.log('Usage: vcr export <profile> <path> [options]');
       console.log('Examples:');
       console.log('  vcr export prod ./my-prod-deployment');
       console.log('  vcr export stage-release ./stage-artifacts');
       console.log('  vcr export prod-debug ./debug-deployment');
+      console.log('  vcr export prod ./my-prod-deployment --guest-agent-image my-registry/guest-agent:v2');
       process.exit(1);
     }
 
     const profile = args[1];
     const exportPath = resolve(args[2]);
+    let guestAgentImage: string | undefined;
+
+    // Parse additional options
+    for (let i = 3; i < args.length; i++) {
+      const arg = args[i];
+      const nextArg = args[i + 1];
+      
+      if (arg === '--guest-agent-image') {
+        if (nextArg) {
+          guestAgentImage = nextArg;
+          i++; // Skip next argument
+        } else {
+          console.error('Error: --guest-agent-image requires a value');
+          process.exit(1);
+        }
+      }
+    }
 
     // Validate profile
     const validProfiles = ['stage', 'stage-release', 'prod', 'prod-debug'];
@@ -29,6 +68,9 @@ export function handleExportCommand(args: string[]): void {
     }
 
     console.log(`📦 Exporting ${profile} profile to: ${exportPath}`);
+    if (guestAgentImage && (profile === 'prod' || profile === 'prod-debug')) {
+      console.log(`🤖 Using guest agent image: ${guestAgentImage}`);
+    }
 
     // Create export directory
     if (!existsSync(exportPath)) {
@@ -36,20 +78,38 @@ export function handleExportCommand(args: string[]): void {
       console.log(`✅ Created export directory: ${exportPath}`);
     }
 
-    // Get cache directory (same logic as build process)
+    // Get cache directory using the same logic as build process
     const pathHash = getPathHash();
     const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
     
-    // For export, we need to find the actual cache directory with the image hash
+    // For export, we need to find the actual cache directory
     // Since we don't have the image tag, we'll look for the most recent subdirectory
+    // that matches our guest-agent image hash if specified
     let cacheDir = baseCacheDir;
     
     if (existsSync(baseCacheDir)) {
       try {
-        // Find the most recent subdirectory (which should contain our build artifacts)
-        const subdirs = execSync(`ls -1t "${baseCacheDir}" | head -1`, { encoding: 'utf8' }).trim();
-        if (subdirs) {
-          cacheDir = join(baseCacheDir, subdirs);
+        if (guestAgentImage && (profile === 'prod' || profile === 'prod-debug')) {
+          // For prod/prod-debug with guest-agent image, we need to find the specific cache directory
+          // Create a hash that includes the guest-agent image
+          const hashInput = `vcr-build-${pathHash}:latest:${guestAgentImage}`;
+          const imageHash = createHash('sha256').update(hashInput).digest('hex').substring(0, 8);
+          const specificCacheDir = join(baseCacheDir, imageHash);
+          
+          if (existsSync(specificCacheDir)) {
+            cacheDir = specificCacheDir;
+            console.log(`✅ Found cache directory for guest agent image: ${cacheDir}`);
+          } else {
+            console.error(`❌ Error: Cache directory not found for guest agent image: ${guestAgentImage}`);
+            console.error('Run "vcr build ' + profile + ' --guest-agent-image ' + guestAgentImage + '" first to create the required files.');
+            process.exit(1);
+          }
+        } else {
+          // Find the most recent subdirectory (which should contain our build artifacts)
+          const subdirs = execSync(`ls -1t "${baseCacheDir}" | head -1`, { encoding: 'utf8' }).trim();
+          if (subdirs) {
+            cacheDir = join(baseCacheDir, subdirs);
+          }
         }
       } catch (err) {
         // If we can't find a subdirectory, use the base directory

@@ -77,7 +77,7 @@ function showHelp() {
   ⚡ vcr exec [options] <command>        Execute command in container or system
   🐚 vcr shell [options]                 Open shell in container or system
   📖 vcr cat <file-path>                 View file contents in container
-  📦 vcr export <profile> <path>         Export profile artifacts to directory
+  📦 vcr export <profile> <path> [options]  Export profile artifacts to directory
   🧹 vcr prune [--local]                 Clean up VCR environment
   ❓ vcr --help                          Show this help message
 
@@ -106,6 +106,7 @@ function showHelp() {
   🧪 vcr up stage                        # Build and run (RISC-V testing)
   🔐 vcr up prod                         # Build and run (verifiable)
   🔐 vcr up prod --guest-agent-image my-registry/guest-agent:v2  # Custom guest agent
+  📦 vcr export prod ./deployment --guest-agent-image my-registry/guest-agent:v2  # Export with custom guest agent
   📄 vcr logs                            # View application logs
   ⚡ vcr exec "ls -la"                   # Run command in container
   🛑 vcr down                            # Stop environment
