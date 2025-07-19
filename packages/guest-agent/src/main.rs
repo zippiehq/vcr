@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 fn main() {
+    println!("Starting Guest Agent");
     let mut builder = Builder::new();
 
     builder
