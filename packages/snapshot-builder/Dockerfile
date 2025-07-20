@@ -31,6 +31,13 @@ WORKDIR /build/vhost-device/vhost-device-vsock
 RUN cargo install --path . --root /usr && \
     strip /usr/bin/vhost-device-vsock
 
+FROM ubuntu:24.04 AS qemu-builder
+RUN apt-get update && apt-get install -y build-essential git curl pkg-config libglib2.0-dev python3 python3-venv ninja-build
+RUN curl -OL https://download.qemu.org/qemu-10.0.2.tar.xz
+RUN tar xJf qemu-10.0.2.tar.xz
+RUN cd qemu-10.0.2 && ./configure --prefix=/usr --target-list=riscv64-softmmu && make -j$(nproc)
+RUN cd qemu-10.0.2 && make install && strip /usr/bin/qemu-system-riscv64
+
 # Final stage: copy artifacts to clean image
 FROM ubuntu:24.04
 
@@ -44,10 +51,11 @@ RUN apt-get update && \
         cryptsetup \
         wget \
         curl \
-        openssh-client qemu-system-misc ipxe-qemu \
+        openssh-client ipxe-qemu qemu-system-data \
         ca-certificates socat && \
     rm -rf /var/lib/apt/lists/*
 
+COPY --from=qemu-builder /usr/bin/qemu-system-riscv64 /usr/bin/qemu-system-riscv64
 RUN mkdir -p /artifacts
 
 # Fetch and install Cartesi machine emulator
