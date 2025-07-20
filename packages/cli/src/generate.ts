@@ -119,9 +119,6 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   - path: root/.ssh/authorized_keys
     source: /cache/ssh.debug-key.pub
     mode: "0600"
-  - path: /usr/bin/perf-qemu
-    source: /usr/share/qemu/perf-qemu-riscv64
-    mode: "0755"
 `;
   }
   
@@ -174,7 +171,7 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
         ps ux
         qemu-system-riscv64 \\
   --machine virt,memory-backend=mem0 \\
-  -cpu rv64,sscofpmf=true \\
+  -cpu rv64,zihintpause=false,zihintntl=false,priv_spec=v1.10.0,h=false \\
   --kernel /work/vc${debugSuffix}.qemu-kernel \\
   -nographic \\
   ${turbo ? '-smp $(nproc) \\' : '\\'}
