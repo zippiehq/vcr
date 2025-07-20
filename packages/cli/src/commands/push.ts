@@ -27,7 +27,7 @@ function getCacheDirectory(imageTag?: string, profile?: string): string {
 }
 
 // Function to resolve custom remote registry mappings
-function resolveRegistryPath(registryPath: string): string {
+function resolveRegistryPath(registryPath: string): { resolvedPath: string; config?: any; remoteKey?: string; path?: string } {
   // Check if it matches the pattern xxx://<yyy>/<zzz>
   const customRemoteMatch = registryPath.match(/^([^:]+):\/\/([^\/]+)\/(.+)$/);
   
@@ -48,7 +48,7 @@ function resolveRegistryPath(registryPath: string): string {
           const resolvedPath = `${config.registry_url}/${path}`;
           console.log(`🔗 Resolved remote ${remoteKey} to registry: ${config.registry_url}`);
           console.log(`📤 Final registry path: ${resolvedPath}`);
-          return resolvedPath;
+          return { resolvedPath, config, remoteKey, path };
         } else {
           console.warn(`⚠️  Remote config ${remoteConfigPath} missing 'registry_url' field`);
         }
@@ -62,7 +62,7 @@ function resolveRegistryPath(registryPath: string): string {
   }
   
   // Return original path if no custom remote mapping found
-  return registryPath;
+  return { resolvedPath: registryPath };
 }
 
 export function handlePushCommand(args: string[]): void {
@@ -77,6 +77,7 @@ export function handlePushCommand(args: string[]): void {
   let noDepot = false;
   let useTarContext = true; // Always use tar context for prod builds
   let forceDockerTar = false;
+  let sourceOnly = false; // Only push source context, don't build
 
   // Parse push arguments
   for (let i = 1; i < args.length; i++) {
@@ -99,6 +100,8 @@ export function handlePushCommand(args: string[]): void {
       noDepot = true;
     } else if (arg === '--force-docker-tar') {
       forceDockerTar = true;
+    } else if (arg === '--source') {
+      sourceOnly = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the registry path
       registryPath = arg;
@@ -116,7 +119,8 @@ export function handlePushCommand(args: string[]): void {
   }
 
   // Resolve custom remote registry mappings
-  const resolvedRegistryPath = resolveRegistryPath(registryPath);
+  const resolved = resolveRegistryPath(registryPath);
+  const resolvedRegistryPath = resolved.resolvedPath;
   
   // Validate registry path format (after resolution)
   if (!resolvedRegistryPath.includes('/') || !resolvedRegistryPath.includes(':')) {
@@ -124,6 +128,61 @@ export function handlePushCommand(args: string[]): void {
     console.error('Example: my-registry.com/myapp:latest');
     console.error('Or use custom remote format: xxx://host/path');
     process.exit(1);
+  }
+
+  // Handle source-only push if --source flag is used
+  if (sourceOnly) {
+    if (!resolved.config || !resolved.config.source) {
+      console.error('Error: --source flag requires a custom remote with "source" endpoint configured');
+      console.error('Add "source": "your-source-endpoint.com" to your remote config file');
+      process.exit(1);
+    }
+    
+    console.log(`📤 Pushing source context to: ${resolved.config.source}/${resolved.path}`);
+    
+    // Create deterministic tar context
+    const contextBuilder = new TarContextBuilder({
+      contextPath: cwd(),
+      outputPath: join(userCacheDir || getCacheDirectory(resolvedRegistryPath, 'prod'), 'source-context.tar'),
+      deterministic: true,
+      forceDocker: forceDockerTar
+    });
+    
+    try {
+      const contextHash = contextBuilder.getContextHash();
+      console.log(`📦 Source context hash: ${contextHash}`);
+      
+      const tarPath = contextBuilder.createTar();
+      console.log(`✅ Created source context: ${tarPath}`);
+      
+      // Upload to source endpoint
+      const sourceUrl = `${resolved.config.source}/${resolved.path}`;
+      console.log(`📤 Uploading to: ${sourceUrl}`);
+      
+      try {
+        execSync(`curl -X PUT --data-binary @${tarPath} "${sourceUrl}"`, { 
+          stdio: 'inherit',
+          env: { ...process.env, CURL_VERBOSE: '1' }
+        });
+        console.log(`✅ Successfully uploaded source context to: ${sourceUrl}`);
+      } catch (err) {
+        console.error('❌ Error uploading source context:', err);
+        process.exit(1);
+      }
+      
+    } catch (err) {
+      console.error('❌ Error creating source context:', err);
+      process.exit(1);
+    } finally {
+      // Clean up the context tar file
+      try {
+        contextBuilder.cleanup();
+      } catch (cleanupErr) {
+        console.warn('Warning: Could not clean up source context tar file:', cleanupErr);
+      }
+    }
+    
+    return; // Exit after source upload
   }
 
   // Auto-detect depot.json if neither --depot nor --no-depot was specified
