@@ -69,7 +69,7 @@ COPY --from=kernels /usr/share/cartesi-machine/images/linux.bin /usr/share/carte
 COPY --from=kernels /usr/share/cartesi-machine/images/linux.bin.config /usr/share/cartesi-machine/images/linux.bin.config
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image /usr/share/qemu/images/linux-riscv64-Image
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image.config /usr/share/qemu/images/linux-riscv64-Image.config
-COPY --from=kernels /usr/local/bin/perf-qemu-riscv64 /usr/share/qemu/perf-qemu-riscv64
+COPY --from=kernels /usr/share/qemu/perf-qemu-riscv64 /usr/share/qemu/perf-qemu-riscv64
 COPY --from=vhost /usr/bin/vhost-device-vsock /usr/bin/vhost-device-vsock
 
 # Copy LinuxKit binary from linuxkit-builder stage
