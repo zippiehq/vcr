@@ -52,8 +52,140 @@ export function checkBuildxAvailable() {
 }
 
 export function checkVcrBuilder() {
-  // No longer needed - using default buildx builder
-  // This function is kept for backward compatibility but does nothing
+  // Check if current builder supports OCI exports
+  checkOciExportSupport();
+}
+
+export function checkOciExportSupport() {
+  try {
+    // Get all available builders
+    const buildersList = execSync('docker buildx ls', { 
+      encoding: 'utf8',
+      stdio: 'pipe'
+    });
+    
+    // Get current builder info
+    const currentBuilderInfo = execSync('docker buildx inspect --bootstrap', { 
+      encoding: 'utf8',
+      stdio: 'pipe'
+    });
+    
+    // Check if current builder is a docker driver (which doesn't support OCI exports)
+    if (currentBuilderInfo.includes('Driver: docker')) {
+      console.log('⚠️  Current buildx builder uses docker driver, which does not support OCI exports');
+      console.log('   This will cause issues with stage/prod profile builds that use OCI output format.');
+      console.log('');
+      
+      // Look for other builders that might support OCI exports
+      const lines = buildersList.split('\n');
+      const compatibleBuilders: string[] = [];
+      
+      for (const line of lines) {
+        if (line.includes('docker-container') || line.includes('kubernetes') || line.includes('remote')) {
+          const builderName = line.split(/\s+/)[0];
+          if (builderName && !builderName.includes('*')) {
+            compatibleBuilders.push(builderName);
+          }
+        }
+      }
+      
+      if (compatibleBuilders.length > 0) {
+        console.log('💡 Found compatible builders that support OCI exports:');
+        compatibleBuilders.forEach(builder => {
+          console.log(`   - ${builder}`);
+        });
+        console.log('');
+        console.log('   To switch to a compatible builder, run:');
+        console.log(`   docker buildx use ${compatibleBuilders[0]}`);
+        console.log('');
+      } else {
+        console.log('💡 To fix this, create a new builder with docker-container driver:');
+        console.log('   docker buildx create --name oci-builder --driver docker-container --use');
+        console.log('');
+        console.log('   Or update the default builder:');
+        console.log('   docker buildx create --name default --driver docker-container --use');
+        console.log('');
+      }
+      
+      console.log('   Then try your build again.');
+      console.log('');
+      
+      // Don't exit for dev profile builds, but warn
+      // The actual check should be done in the build function based on profile
+      return false;
+    }
+    
+    console.log('✅ Current buildx builder supports OCI exports');
+    return true;
+  } catch (err) {
+    console.error('❌ Error checking buildx builder OCI export support:', err);
+    console.error('Please ensure you have a working buildx builder configured.');
+    process.exit(1);
+  }
+}
+
+export function requireOciExportSupport() {
+  try {
+    // Get all available builders
+    const buildersList = execSync('docker buildx ls', { 
+      encoding: 'utf8',
+      stdio: 'pipe'
+    });
+    
+    // Get current builder info
+    const currentBuilderInfo = execSync('docker buildx inspect --bootstrap', { 
+      encoding: 'utf8',
+      stdio: 'pipe'
+    });
+    
+    // Check if current builder is a docker driver (which doesn't support OCI exports)
+    if (currentBuilderInfo.includes('Driver: docker')) {
+      console.error('❌ Error: Current buildx builder uses docker driver, which does not support OCI exports');
+      console.error('   This is required for stage/prod profile builds that use OCI output format.');
+      console.error('');
+      
+      // Look for other builders that might support OCI exports
+      const lines = buildersList.split('\n');
+      const compatibleBuilders: string[] = [];
+      
+      for (const line of lines) {
+        if (line.includes('docker-container') || line.includes('kubernetes') || line.includes('remote')) {
+          const builderName = line.split(/\s+/)[0];
+          if (builderName && !builderName.includes('*')) {
+            compatibleBuilders.push(builderName);
+          }
+        }
+      }
+      
+      if (compatibleBuilders.length > 0) {
+        console.error('💡 Found compatible builders that support OCI exports:');
+        compatibleBuilders.forEach(builder => {
+          console.error(`   - ${builder}`);
+        });
+        console.error('');
+        console.error('   To switch to a compatible builder, run:');
+        console.error(`   docker buildx use ${compatibleBuilders[0]}`);
+        console.error('');
+        console.error('   Then try your build again.');
+      } else {
+        console.error('💡 To fix this, create a new builder with docker-container driver:');
+        console.error('   docker buildx create --name oci-builder --driver docker-container --use');
+        console.error('');
+        console.error('   Or update the default builder:');
+        console.error('   docker buildx create --name default --driver docker-container --use');
+        console.error('');
+        console.error('   Then try your build again.');
+      }
+      
+      process.exit(1);
+    }
+    
+    return true;
+  } catch (err) {
+    console.error('❌ Error checking buildx builder OCI export support:', err);
+    console.error('Please ensure you have a working buildx builder configured.');
+    process.exit(1);
+  }
 }
 
 export function checkRiscv64Support() {

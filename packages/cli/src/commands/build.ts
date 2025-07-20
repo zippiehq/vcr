@@ -15,7 +15,8 @@ import {
 import { 
   checkBuildxAvailable, 
   checkVcrBuilder, 
-  checkRiscv64Support 
+  checkRiscv64Support,
+  requireOciExportSupport
 } from '../checks';
 
 // Import checkVsockSupport function
@@ -164,6 +165,11 @@ export function handleBuildCommand(args: string[]): void {
     checkRiscv64Support();
   }
 
+  // Check OCI export support for non-dev profiles
+  if (profile !== 'dev') {
+    requireOciExportSupport();
+  }
+
   buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
 }
 
@@ -263,6 +269,11 @@ export function handleUpCommand(args: string[]): void {
   // Check RISC-V support if needed
   if (profile !== 'dev') {
     checkRiscv64Support();
+  }
+
+  // Check OCI export support for non-dev profiles
+  if (profile !== 'dev') {
+    requireOciExportSupport();
   }
 
   runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
