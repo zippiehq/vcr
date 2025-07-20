@@ -44,13 +44,6 @@ target "snapshot-builder" {
   depends_on = ["vcr-kernels"]
 }
 
-target "linuxkit-builder" {
-  inherits = ["docker-metadata-action", "docker-platforms"]
-  context = "./packages/linuxkit-builder"
-  dockerfile = "Dockerfile"
-  tags = ["ghcr.io/zippiehq/vcr-linuxkit-builder:latest"]
-}
-
 target "default" {
-  inherits = ["vcr-kernels", "snapshot-builder", "linuxkit-builder"]
+  inherits = ["vcr-kernels", "snapshot-builder"]
 } 

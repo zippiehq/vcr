@@ -1,6 +1,0 @@
-{
-  "name": "@zippie/linuxkit-builder",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Builds and packages the linuxkit binary for the target architecture"
-} 

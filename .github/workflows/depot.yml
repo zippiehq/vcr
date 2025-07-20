@@ -33,7 +33,6 @@ jobs:
           images: |
             ghcr.io/zippiehq/vcr-kernels
             ghcr.io/zippiehq/vcr-snapshot-builder
-            ghcr.io/zippiehq/vcr-linuxkit-builder
           tags: |
             type=semver,pattern={{version}}
             type=ref,event=pr
@@ -76,7 +75,7 @@ jobs:
         with:
           project: ${{ secrets.DEPOT_PROJECT_ID }}
           token: ${{ secrets.DEPOT_API_TOKEN }}
-          targets: vcr-kernels,snapshot-builder,linuxkit-builder,guest-agent
+          targets: vcr-kernels,snapshot-builder,guest-agent
           files: |
             ./docker-bake.hcl
             ./docker-bake.platforms.hcl

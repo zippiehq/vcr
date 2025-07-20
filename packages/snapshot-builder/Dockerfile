@@ -1,7 +1,22 @@
 # Pull vcr-kernels image if not available locally
 
-
 FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels:latest as kernels
+
+FROM golang:1.23 as linuxkit-builder
+
+ARG TARGETARCH
+ENV CGO_ENABLED=0
+
+RUN apt-get update && apt-get install -y make git file
+
+WORKDIR /src
+RUN git clone https://github.com/linuxkit/linuxkit.git . \
+    && git checkout b42e1a8babbaf3a264a21aa6bcd657b1b4d5bfc6
+RUN mkdir -p bin
+
+# Build for the requested architecture
+RUN make GOOS=linux GOARCH=$TARGETARCH LOCAL_TARGET=$(pwd)/bin/linuxkit local-build && \
+    file bin/linuxkit
 
 FROM rust:1.85.1 as vhost
 
@@ -52,5 +67,8 @@ COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image.config /usr/share
 COPY --from=vhost /usr/bin/vhost-device-vsock /usr/bin/vhost-device-vsock
 COPY --from=vhost /build/oyster-monorepo/networking/tcp-proxy/target/release/vsock-to-ip /usr/bin/vsock-to-ip
 COPY --from=vhost /build/oyster-monorepo/networking/tcp-proxy/target/release/ip-to-vsock /usr/bin/ip-to-vsock
+
+# Copy LinuxKit binary from linuxkit-builder stage
+COPY --from=linuxkit-builder /src/bin/linuxkit /usr/local/bin/linuxkit
 
 CMD ["/bin/bash"] 

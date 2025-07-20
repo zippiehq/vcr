@@ -339,13 +339,13 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   }
   
   const currentDir = cwd();
-  const imageName = process.env.LINUXKIT_IMAGE || 'ghcr.io/zippiehq/vcr-linuxkit-builder:latest';
+  const imageName = process.env.LINUXKIT_IMAGE || 'ghcr.io/zippiehq/vcr-snapshot-builder:latest';
   
   // Get current user UID/GID for Docker commands
   const uid = process.getuid?.() ?? 0;
   const gid = process.getgid?.() ?? 0;
   
-  console.log(`Using LinuxKit image: ${imageName}`);
+  console.log(`Using snapshot-builder image: ${imageName}`);
   console.log(`Working directory: ${currentDir}`);
   console.log(`Cache directory: ${cacheDir}`);
   
