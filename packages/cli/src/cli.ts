@@ -11,6 +11,7 @@ import { pruneVcrLocal, pruneVcr } from './commands/prune';
 import { handleCreateCommand } from './commands/create';
 import { handleExportCommand } from './commands/export';
 import { handleIntroCommand } from './commands/intro';
+import { handlePushCommand } from './commands/push';
 import { checkDockerAvailable } from './checks';
 
 export function getPathHash(): string {
@@ -72,6 +73,7 @@ function showHelp() {
   🏗️  vcr create <dir> --template <lang>  Create new project from template
   🔨 vcr build <profile> [options]       Build container images
   🚀 vcr up <profile> [options]          Build and run environment
+  📤 vcr push <registry-path> [options]  Build and push prod (RISC-V) container to registry
   🛑 vcr down                            Stop development environment
   📄 vcr logs [options]                  View container or system logs
   ⚡ vcr exec [options] <command>        Execute command in container or system
@@ -107,6 +109,8 @@ function showHelp() {
   🧪 vcr up stage                        # Build and run (RISC-V testing)
   🔐 vcr up prod                         # Build and run (verifiable)
   🔐 vcr up prod --guest-agent-image my-registry/guest-agent:v2  # Custom guest agent
+  📤 vcr push my-registry.com/myapp:latest  # Build and push RISC-V container
+  📤 vcr push ghcr.io/myuser/myapp:v1.0.0  # Push to GitHub Container Registry
   🔥 vcr up dev --hot                    # Hot reload (file watching)
   🔥 vcr up stage --hot                  # Hot reload (rebuild on changes)
   🔥 vcr up prod --hot                   # Hot reload (rebuild on changes)
@@ -164,6 +168,10 @@ function main() {
       
     case 'up':
       handleUpCommand(args);
+      break;
+      
+    case 'push':
+      handlePushCommand(args);
       break;
       
     case 'down':
