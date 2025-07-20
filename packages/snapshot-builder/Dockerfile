@@ -32,7 +32,7 @@ RUN cargo install --path . --root /usr && \
     strip /usr/bin/vhost-device-vsock
 
 # Final stage: copy artifacts to clean image
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 # Install required packages
 RUN apt-get update && \
