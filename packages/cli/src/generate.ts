@@ -171,7 +171,7 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
         ps ux
         qemu-system-riscv64 \\
   --machine virt,memory-backend=mem0 \\
-  -cpu rv64,zihintpause=false,zihintntl=false,priv_spec=v1.10.0,h=false \\
+  -cpu rv64,zihintpause=false,zihintntl=false,priv_spec=v1.10.0,h=false,sv48=on \\
   --kernel /work/vc${debugSuffix}.qemu-kernel \\
   -nographic \\
   ${turbo ? '-smp $(nproc) \\' : '\\'}
