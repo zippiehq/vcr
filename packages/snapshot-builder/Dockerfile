@@ -1,6 +1,6 @@
 # Pull vcr-kernels image if not available locally
 
-FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels@sha256:7c5328de683dcd2be9304fe676d373ce1c0f0df99dc8abe4ec15958dac4c2590 as kernels
+FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels@sha256:ce8b06ba75a228b818cdb58191b99a7a1f4eaec83273d05538b777888182fb65 as kernels
 
 FROM golang:1.23 as linuxkit-builder
 
@@ -69,7 +69,7 @@ COPY --from=kernels /usr/share/cartesi-machine/images/linux.bin /usr/share/carte
 COPY --from=kernels /usr/share/cartesi-machine/images/linux.bin.config /usr/share/cartesi-machine/images/linux.bin.config
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image /usr/share/qemu/images/linux-riscv64-Image
 COPY --from=kernels /usr/share/qemu/images/linux-riscv64-Image.config /usr/share/qemu/images/linux-riscv64-Image.config
-#COPY --from=kernels /usr/local/bin/perf-qemu-riscv64 /usr/share/qemu/perf-qemu-riscv64
+COPY --from=kernels /usr/local/bin/perf-qemu-riscv64 /usr/share/qemu/perf-qemu-riscv64
 COPY --from=vhost /usr/bin/vhost-device-vsock /usr/bin/vhost-device-vsock
 
 # Copy LinuxKit binary from linuxkit-builder stage
