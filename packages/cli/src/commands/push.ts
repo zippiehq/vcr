@@ -78,6 +78,7 @@ export function handlePushCommand(args: string[]): void {
   let useTarContext = true; // Always use tar context for prod builds
   let forceDockerTar = false;
   let sourceOnly = false; // Only push source context, don't build
+  let gitOnly = false; // Only push to git remote, don't build
 
   // Parse push arguments
   for (let i = 1; i < args.length; i++) {
@@ -102,6 +103,8 @@ export function handlePushCommand(args: string[]): void {
       forceDockerTar = true;
     } else if (arg === '--source') {
       sourceOnly = true;
+    } else if (arg === '--git') {
+      gitOnly = true;
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the registry path
       registryPath = arg;
@@ -183,6 +186,59 @@ export function handlePushCommand(args: string[]): void {
     }
     
     return; // Exit after source upload
+  }
+
+  // Handle git-only push if --git flag is used
+  if (gitOnly) {
+    if (!resolved.config || !resolved.config.git) {
+      console.error('Error: --git flag requires a custom remote with "git" endpoint configured');
+      console.error('Add "git": "git@github.com:user/repo.git" to your remote config file');
+      process.exit(1);
+    }
+    
+    console.log(`📤 Pushing to git remote: ${resolved.config.git}`);
+    
+    // Check if we're in a git repository
+    try {
+      execSync('git status', { stdio: 'pipe' });
+    } catch (err) {
+      console.error('Error: Not in a git repository');
+      console.error('Please run this command from a git repository');
+      process.exit(1);
+    }
+    
+    // Set up git remote and push
+    try {
+      const currentBranch = execSync('git branch --show-current', { encoding: 'utf8' }).trim();
+      console.log(`🌿 Current branch: ${currentBranch}`);
+      
+      // Add the git remote if it doesn't exist
+      const remoteName = 'vcr-push';
+      try {
+        execSync(`git remote get-url ${remoteName}`, { stdio: 'pipe' });
+        console.log(`✅ Git remote '${remoteName}' already exists`);
+      } catch (err) {
+        console.log(`🔗 Adding git remote '${remoteName}': ${resolved.config.git}`);
+        execSync(`git remote add ${remoteName} ${resolved.config.git}`, { stdio: 'inherit' });
+      }
+      
+      // Push to the remote (let git push handle unpushed commits check)
+      console.log(`📤 Pushing to ${remoteName}/${currentBranch}...`);
+      try {
+        execSync(`git push ${remoteName} ${currentBranch}`, { stdio: 'inherit' });
+        console.log(`✅ Successfully pushed to git remote: ${resolved.config.git}`);
+      } catch (err) {
+        console.error('❌ Error pushing to git remote:', err);
+        console.error('💡 Make sure you have access to the git repository and have commits to push');
+        process.exit(1);
+      }
+      
+    } catch (err) {
+      console.error('❌ Error checking git status:', err);
+      process.exit(1);
+    }
+    
+    return; // Exit after git push
   }
 
   // Auto-detect depot.json if neither --depot nor --no-depot was specified
