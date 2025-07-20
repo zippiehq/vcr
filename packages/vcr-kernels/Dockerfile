@@ -92,7 +92,7 @@ RUN sha256sum /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin
 # Verify OpenSBI firmware hash
 RUN echo "b6c975d1c227ba1ef1075a68e5b52f9dff9c0d3010d5be3c1e4023ef0521975e  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
 
-FROM --platform=linux/riscv64 ubuntu-24.04 AS perf-builder
+FROM --platform=linux/riscv64 ubuntu:24.04 AS perf-builder
 
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
