@@ -397,7 +397,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-v', `${linuxkitCacheDir}:/home/user/.linuxkit/cache`,
           '-w', '/cache',
           imageName,
-          'cache', 'import', containerOciTarPath
+          '/usr/local/bin/linuxkit', 'cache', 'import', containerOciTarPath
         ];
         
         console.log(`Executing: ${importCommand.join(' ')}`);
@@ -417,7 +417,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
         imageName,
-        'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', `vc${debugSuffix}.yml`
+        '/usr/local/bin/linuxkit', 'build', '--format', 'tar', '--arch', 'riscv64', '--decompress-kernel', '--no-sbom', `vc${debugSuffix}.yml`
       ];
     
     
