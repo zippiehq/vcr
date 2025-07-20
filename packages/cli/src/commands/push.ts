@@ -26,6 +26,45 @@ function getCacheDirectory(imageTag?: string, profile?: string): string {
   return baseCacheDir;
 }
 
+// Function to resolve custom remote registry mappings
+function resolveRegistryPath(registryPath: string): string {
+  // Check if it matches the pattern xxx://<yyy>/<zzz>
+  const customRemoteMatch = registryPath.match(/^([^:]+):\/\/([^\/]+)\/(.+)$/);
+  
+  if (customRemoteMatch) {
+    const [, protocol, host, path] = customRemoteMatch;
+    const remoteKey = `${protocol}://${host}`;
+    
+    // Create hash of the remote key
+    const remoteHash = createHash('sha256').update(remoteKey).digest('hex').substring(0, 8);
+    const remoteConfigPath = join(homedir(), '.vcr', 'remotes', `${remoteHash}.json`);
+    
+    if (existsSync(remoteConfigPath)) {
+      try {
+        const configContent = readFileSync(remoteConfigPath, 'utf8');
+        const config = JSON.parse(configContent);
+        
+        if (config.registry_url) {
+          const resolvedPath = `${config.registry_url}/${path}`;
+          console.log(`🔗 Resolved remote ${remoteKey} to registry: ${config.registry_url}`);
+          console.log(`📤 Final registry path: ${resolvedPath}`);
+          return resolvedPath;
+        } else {
+          console.warn(`⚠️  Remote config ${remoteConfigPath} missing 'registry_url' field`);
+        }
+      } catch (err) {
+        console.warn(`⚠️  Failed to read remote config ${remoteConfigPath}:`, err);
+      }
+    } else {
+      console.log(`ℹ️  No remote config found for ${remoteKey} (expected: ${remoteConfigPath})`);
+      console.log(`💡 Create a config file with: {"registry_url": "your-registry.com"}`);
+    }
+  }
+  
+  // Return original path if no custom remote mapping found
+  return registryPath;
+}
+
 export function handlePushCommand(args: string[]): void {
   checkBuildxAvailable();
   checkRiscv64Support();
@@ -76,10 +115,14 @@ export function handlePushCommand(args: string[]): void {
     process.exit(1);
   }
 
-  // Validate registry path format
-  if (!registryPath.includes('/') || !registryPath.includes(':')) {
+  // Resolve custom remote registry mappings
+  const resolvedRegistryPath = resolveRegistryPath(registryPath);
+  
+  // Validate registry path format (after resolution)
+  if (!resolvedRegistryPath.includes('/') || !resolvedRegistryPath.includes(':')) {
     console.error('Error: Registry path must be in format: registry.com/name:tag');
     console.error('Example: my-registry.com/myapp:latest');
+    console.error('Or use custom remote format: xxx://host/path');
     process.exit(1);
   }
 
@@ -98,7 +141,7 @@ export function handlePushCommand(args: string[]): void {
     process.exit(1);
   }
 
-  console.log(`🚀 Building and pushing prod (RISC-V) container to: ${registryPath}`);
+  console.log(`🚀 Building and pushing prod (RISC-V) container to: ${resolvedRegistryPath}`);
 
   // For pushing to registry, we need to build with docker output instead of OCI tar
   // We'll build with prod profile but override the output to use docker format
@@ -106,7 +149,7 @@ export function handlePushCommand(args: string[]): void {
   
   // Build the image with prod profile but docker output for registry push
   const currentDir = cwd();
-  console.log(`Building image: ${registryPath}`);
+  console.log(`Building image: ${resolvedRegistryPath}`);
   console.log(`Profile: ${profile}`);
   
   // Check if Dockerfile exists
@@ -119,7 +162,7 @@ export function handlePushCommand(args: string[]): void {
   const platforms = ['linux/riscv64'];
   
   // Get cache directory based on image tag and profile
-  const cacheDir = userCacheDir || getCacheDirectory(registryPath, profile);
+  const cacheDir = userCacheDir || getCacheDirectory(resolvedRegistryPath, profile);
   
   // Create cache directory if it doesn't exist
   if (!existsSync(cacheDir)) {
@@ -157,7 +200,7 @@ export function handlePushCommand(args: string[]): void {
       '--provenance=false',
       '--sbom=false',
       '--build-arg', 'SOURCE_DATE_EPOCH=1752444000',
-      '--output', `type=registry,name=${registryPath}`,
+      '--output', `type=registry,name=${resolvedRegistryPath}`,
     ];
     
     // Use tar file via stdin if available, otherwise use directory
@@ -178,7 +221,7 @@ export function handlePushCommand(args: string[]): void {
       '--provenance=false',
       '--sbom=false',
       '--build-arg', 'SOURCE_DATE_EPOCH=1752444000',
-      '--output', `type=registry,name=${registryPath}`,
+      '--output', `type=registry,name=${resolvedRegistryPath}`,
     ];
     
     // Use tar file via stdin if available, otherwise use directory
@@ -216,7 +259,7 @@ export function handlePushCommand(args: string[]): void {
       });
     }
     console.log(`\n✅ Build and push completed successfully!`);
-    console.log(`📤 Successfully pushed to: ${registryPath}`);
+    console.log(`📤 Successfully pushed to: ${resolvedRegistryPath}`);
     
   } catch (err) {
     console.error('❌ Build failed, cannot push:', err);
