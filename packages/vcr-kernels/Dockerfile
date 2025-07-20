@@ -92,6 +92,35 @@ RUN sha256sum /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin
 # Verify OpenSBI firmware hash
 RUN echo "b6c975d1c227ba1ef1075a68e5b52f9dff9c0d3010d5be3c1e4023ef0521975e  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
 
+FROM --platform=linux/riscv64 ubuntu-24.04 AS perf-builder
+
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y \
+        build-essential autoconf automake libtool libtool-bin autotools-dev \
+        git make pkg-config patchutils gawk bison flex ca-certificates gnupg \
+        device-tree-compiler libmpc-dev libmpfr-dev libgmp-dev rsync cpio \
+        libusb-1.0-0-dev texinfo gperf bc zlib1g-dev libncurses-dev \
+        wget vim wget curl zip unzip libexpat-dev python3 help2man \
+        libelf-dev libdw-dev libnuma-dev libslang2-dev libperl-dev \
+        libiberty-dev libbfd-dev libopencsd-dev libbabeltrace-dev \
+        libtraceevent-dev libtracefs-dev
+
+WORKDIR /work
+COPY --from=kernel-builder /work/linux-2 /work/linux-2
+WORKDIR /work/linux-2
+RUN cp .config ..
+RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) clean
+RUN cp ../.config .config
+RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) olddefconfig
+RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) headers_install
+# Build static perf
+WORKDIR /work/linux-2/tools/perf
+RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) EXTRA_CFLAGS="-Wno-alloc-size -Wno-alloc-size-larger-than -Wno-calloc-transposed-args" NO_JEVENTS=1 LDFLAGS=-static
+
+# Verify perf binary
+RUN file /work/linux-2/tools/perf/perf
+RUN ldd /work/linux-2/tools/perf/perf || echo "Static binary - no dependencies"
+
 # Final stage: copy artifacts to clean image
 FROM debian:bookworm-slim
 
@@ -101,5 +130,5 @@ COPY --from=0 /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin /usr/
 COPY --from=0 /work/linux/.config /usr/share/cartesi-machine/images/linux.bin.config
 COPY --from=0 /work/linux-2/arch/riscv/boot/Image /usr/share/qemu/images/linux-riscv64-Image
 COPY --from=0 /work/linux-2/.config /usr/share/qemu/images/linux-riscv64-Image.config
-
+COPY --from=perf-builder /work/linux-2/tools/perf/perf /usr/share/qemu/perf-qemu-riscv64
 CMD ["/bin/bash"] 
