@@ -57,7 +57,7 @@ function resolveRegistryPath(registryPath: string): { resolvedPath: string; conf
       }
     } else {
       console.log(`ℹ️  No remote config found for ${remoteKey} (expected: ${remoteConfigPath})`);
-      console.log(`💡 Create a config file with: {"registry_url": "your-registry.com", "git": "git@github.com:user/repo.git", "remote_name": "optional-custom-name"}`);
+      console.log(`💡 Create a config file with: {"registry_url": "your-registry.com", "git": "git@github.com:user/repo.git", "remote_name": "optional-custom-name", "notify_url": "https://webhook.example.com"}`);
     }
   }
   
@@ -168,6 +168,29 @@ export function handlePushCommand(args: string[]): void {
           env: { ...process.env, CURL_VERBOSE: '1' }
         });
         console.log(`✅ Successfully uploaded source context to: ${sourceUrl}`);
+        
+        // Send notification if configured
+        if (resolved.config?.notify_url) {
+          try {
+            const notificationData = {
+              type: 'source_upload',
+              source_url: sourceUrl,
+              original_path: registryPath,
+              timestamp: new Date().toISOString(),
+              success: true,
+              context_hash: contextHash
+            };
+            
+            console.log(`📢 Sending notification to: ${resolved.config.notify_url}`);
+            const response = execSync(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify(notificationData)}' "${resolved.config.notify_url}"`, { 
+              encoding: 'utf8',
+              stdio: 'pipe'
+            });
+            console.log(`📢 Notification response: ${response.trim()}`);
+          } catch (err) {
+            console.warn(`⚠️  Failed to send notification: ${err}`);
+          }
+        }
       } catch (err) {
         console.error('❌ Error uploading source context:', err);
         process.exit(1);
@@ -228,6 +251,30 @@ export function handlePushCommand(args: string[]): void {
       try {
         execSync(`git push ${remoteName} ${currentBranch}`, { stdio: 'inherit' });
         console.log(`✅ Successfully pushed to git remote: ${resolved.config.git}`);
+        
+        // Send notification if configured
+        if (resolved.config?.notify_url) {
+          try {
+            const notificationData = {
+              type: 'git_push',
+              git_remote: resolved.config.git,
+              remote_name: remoteName,
+              branch: currentBranch,
+              original_path: registryPath,
+              timestamp: new Date().toISOString(),
+              success: true
+            };
+            
+            console.log(`📢 Sending notification to: ${resolved.config.notify_url}`);
+            const response = execSync(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify(notificationData)}' "${resolved.config.notify_url}"`, { 
+              encoding: 'utf8',
+              stdio: 'pipe'
+            });
+            console.log(`📢 Notification response: ${response.trim()}`);
+          } catch (err) {
+            console.warn(`⚠️  Failed to send notification: ${err}`);
+          }
+        }
       } catch (err) {
         console.error('❌ Error pushing to git remote:', err);
         console.error('💡 Make sure you have access to the git repository and have commits to push');
@@ -374,8 +421,32 @@ export function handlePushCommand(args: string[]): void {
         env: { ...process.env, SOURCE_DATE_EPOCH: sourceDateEpoch }
       });
     }
-    console.log(`\n✅ Build and push completed successfully!`);
-    console.log(`📤 Successfully pushed to: ${resolvedRegistryPath}`);
+            console.log(`\n✅ Build and push completed successfully!`);
+        console.log(`📤 Successfully pushed to: ${resolvedRegistryPath}`);
+        
+        // Send notification if configured
+        if (resolved.config?.notify_url) {
+          try {
+            const notificationData = {
+              type: 'push',
+              registry_path: resolvedRegistryPath,
+              original_path: registryPath,
+              timestamp: new Date().toISOString(),
+              success: true,
+              profile: 'prod',
+              platforms: ['linux/riscv64']
+            };
+            
+            console.log(`📢 Sending notification to: ${resolved.config.notify_url}`);
+            const response = execSync(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify(notificationData)}' "${resolved.config.notify_url}"`, { 
+              encoding: 'utf8',
+              stdio: 'pipe'
+            });
+            console.log(`📢 Notification response: ${response.trim()}`);
+          } catch (err) {
+            console.warn(`⚠️  Failed to send notification: ${err}`);
+          }
+        }
     
   } catch (err) {
     console.error('❌ Build failed, cannot push:', err);
