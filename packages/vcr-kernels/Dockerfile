@@ -1,4 +1,4 @@
-FROM ubuntu:24.04 AS kernel-builder
+FROM debian:bookworm-slim
 
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
@@ -48,7 +48,7 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 RUN sha256sum /work/linux/arch/riscv/boot/Image
 
 # Verify linux kernel Image hash
-RUN echo "e6dd98c85e83d9642d14e6691507470117c9072b6e68756024c702ea42f0cb17  /work/linux/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux kernel Image hash verification failed" && exit 1)
+RUN echo "ce7eaf5bfacd3ce7e9a3aa933b1e48d1a262d4a53d68499e7e7fc5757aa830c1  /work/linux/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux kernel Image hash verification failed" && exit 1)
 
 # Build kernel with deterministic timestamps
 WORKDIR /work/linux-2
@@ -82,7 +82,7 @@ RUN SOURCE_DATE_EPOCH=0 ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- KBUILD_BUILD
 
 # Verify linux-2 kernel Image hash
 RUN sha256sum /work/linux-2/arch/riscv/boot/Image
-RUN echo "5e1a79f2f23637af98f1dfaaee00b2197e74d076d374bf8c3378f979f497cf78  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
+RUN echo "4c90f90c23e76f0a7837f00981549a3c19bae1df9d68b054464f3d2608dd6462  /work/linux-2/arch/riscv/boot/Image" | sha256sum -c || (echo "❌ Linux-2 kernel Image hash verification failed" && exit 1)
 
 # Build OpenSBI with kernel payload
 WORKDIR /work/opensbi
@@ -90,47 +90,16 @@ RUN SOURCE_DATE_EPOCH=0 make FW_PAYLOAD=y FW_OPTIONS=0x01 PLATFORM=cartesi CROSS
 
 RUN sha256sum /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin
 # Verify OpenSBI firmware hash
-RUN echo "4891b26cdf330ad9811fa3bc628d7f6859fe3534a8b5806294e5340b9cd21570  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
-
-# Build static perf for linux-2 kernel
-FROM --platform=linux/riscv64 ubuntu:24.04 AS perf-builder
-
-RUN apt-get update && \
-    apt-get install --no-install-recommends -y \
-        build-essential autoconf automake libtool libtool-bin autotools-dev \
-        git make pkg-config patchutils gawk bison flex ca-certificates gnupg \
-        device-tree-compiler libmpc-dev libmpfr-dev libgmp-dev rsync cpio \
-        libusb-1.0-0-dev texinfo gperf bc zlib1g-dev libncurses-dev \
-        wget vim wget curl zip unzip libexpat-dev python3 help2man \
-        libelf-dev libdw-dev libnuma-dev libslang2-dev libperl-dev \
-        libiberty-dev libbfd-dev libopencsd-dev libbabeltrace-dev \
-        libtraceevent-dev libtracefs-dev
-
-WORKDIR /work
-COPY --from=kernel-builder /work/linux-2 /work/linux-2
-WORKDIR /work/linux-2
-RUN cp .config ..
-RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) clean
-RUN cp ../.config .config
-RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) olddefconfig
-RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) headers_install
-# Build static perf
-WORKDIR /work/linux-2/tools/perf
-RUN SOURCE_DATE_EPOCH=0 ARCH=riscv KBUILD_BUILD_TIMESTAMP="Thu, 01 Jan 1970 00:00:00 +0000" KBUILD_BUILD_USER=builder KBUILD_BUILD_HOST=builder make -j$(nproc) EXTRA_CFLAGS="-Wno-alloc-size -Wno-alloc-size-larger-than -Wno-calloc-transposed-args" NO_JEVENTS=1 LDFLAGS=-static
-
-# Verify perf binary
-RUN file /work/linux-2/tools/perf/perf
-RUN ldd /work/linux-2/tools/perf/perf || echo "Static binary - no dependencies"
+RUN echo "b6c975d1c227ba1ef1075a68e5b52f9dff9c0d3010d5be3c1e4023ef0521975e  /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin" | sha256sum -c || (echo "❌ OpenSBI firmware hash verification failed" && exit 1)
 
 # Final stage: copy artifacts to clean image
-FROM ubuntu:24.04
+FROM debian:bookworm-slim
 
-RUN mkdir -p /usr/share/cartesi-machine/images /usr/share/qemu/images /usr/local/bin
+RUN mkdir -p /usr/share/cartesi-machine/images /usr/share/qemu/images
 
 COPY --from=0 /work/opensbi/build/platform/cartesi/firmware/fw_payload.bin /usr/share/cartesi-machine/images/linux.bin
 COPY --from=0 /work/linux/.config /usr/share/cartesi-machine/images/linux.bin.config
 COPY --from=0 /work/linux-2/arch/riscv/boot/Image /usr/share/qemu/images/linux-riscv64-Image
 COPY --from=0 /work/linux-2/.config /usr/share/qemu/images/linux-riscv64-Image.config
-COPY --from=perf-builder /work/linux-2/tools/perf/perf /usr/local/bin/perf-qemu-riscv64
 
 CMD ["/bin/bash"] 
