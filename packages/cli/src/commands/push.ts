@@ -57,7 +57,7 @@ function resolveRegistryPath(registryPath: string): { resolvedPath: string; conf
       }
     } else {
       console.log(`ℹ️  No remote config found for ${remoteKey} (expected: ${remoteConfigPath})`);
-      console.log(`💡 Create a config file with: {"registry_url": "your-registry.com"}`);
+      console.log(`💡 Create a config file with: {"registry_url": "your-registry.com", "git": "git@github.com:user/repo.git", "remote_name": "optional-custom-name"}`);
     }
   }
   
@@ -193,10 +193,11 @@ export function handlePushCommand(args: string[]): void {
     if (!resolved.config || !resolved.config.git) {
       console.error('Error: --git flag requires a custom remote with "git" endpoint configured');
       console.error('Add "git": "git@github.com:user/repo.git" to your remote config file');
+      console.error('Optional: Add "remote_name": "custom-name" to use a different git remote name');
       process.exit(1);
     }
     
-    console.log(`📤 Pushing to git remote: ${resolved.config.git}`);
+            console.log(`📤 Pushing to git remote: ${resolved.config.git}`);
     
     // Check if we're in a git repository
     try {
@@ -212,9 +213,9 @@ export function handlePushCommand(args: string[]): void {
       const currentBranch = execSync('git branch --show-current', { encoding: 'utf8' }).trim();
       console.log(`🌿 Current branch: ${currentBranch}`);
       
-      // Add the git remote if it doesn't exist
-      const remoteName = 'vcr-push';
-      try {
+                  // Add the git remote if it doesn't exist
+            const remoteName = resolved.config.remote_name || 'vcr-push';
+            try {
         execSync(`git remote get-url ${remoteName}`, { stdio: 'pipe' });
         console.log(`✅ Git remote '${remoteName}' already exists`);
       } catch (err) {
