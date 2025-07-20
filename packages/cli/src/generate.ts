@@ -119,6 +119,9 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   - path: root/.ssh/authorized_keys
     source: /cache/ssh.debug-key.pub
     mode: "0600"
+  - path: /usr/bin/perf-qemu
+    source: /usr/share/qemu/perf-qemu-riscv64
+    mode: "0755"
 `;
   }
   
