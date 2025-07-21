@@ -133,6 +133,12 @@ function main() {
     return;
   }
   
+  // Check for help flags (only if first argument)
+  if (args[0] === '--help' || args[0] === '-h') {
+    showHelp();
+    return;
+  }
+  
   const command = args[0];
   
   switch (command) {
