@@ -236,8 +236,7 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
         '--skip-root-hash-check',
         '--virtio-net=user',
         '-p=0.0.0.0:8080:10.0.2.15:8080/tcp',
-        '-p=0.0.0.0:8022:10.0.2.15:22/tcp',
-        '-i'
+        '-p=0.0.0.0:8022:10.0.2.15:22/tcp'
       ],
       tty: true,
       stdin_open: true,
