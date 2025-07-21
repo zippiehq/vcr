@@ -1,6 +1,6 @@
 # Pull vcr-kernels image if not available locally
 
-FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels@sha256:a0384a34ffb79f98a94452e528757924915c61256076211e18637e051d7999d9 as kernels
+FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels@sha256:135f1c813a2c03371b90649ce0cb7f9085a3abad2237ef84110013e82c6a48a9 as kernels
 
 FROM golang:1.23 as linuxkit-builder
 
