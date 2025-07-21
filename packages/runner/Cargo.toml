@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-cartesi-machine = { git = "https://github.com/zippiehq/dave", rev = "4e56e1c0be31791cea883812b041486fe5ad429f", features = ["download_uarch"] }
+cartesi-machine = { git = "https://github.com/zippiehq/cm-rust-bindings", rev = "b6b245e5df16a7f9e4e2ff33c5eaad90778d7cfb", features = ["download_uarch"] }
 log = "0.4"
 env_logger = "0.10"
 colored = "2.1.0"
