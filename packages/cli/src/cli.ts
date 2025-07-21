@@ -85,9 +85,9 @@ function showHelp() {
 
 🎯 Profiles:
   🚀 dev          - Native platform, fastest development
-  🧪 stage        - RISC-V QEMU with debug tools
+  🧪 stage        - RISC-V QEMU with debug tools (⚡ ~2.3x faster than prod)
   🔒 stage-release- RISC-V QEMU without debug tools
-  🔐 prod         - Verifiable RISC-V Cartesi Machine
+  🔐 prod         - Verifiable RISC-V Cartesi Machine (🐢 ~2.3x slower than stage)
   🐛 prod-debug   - Verifiable RISC-V with debug tools
 
 💡 Quick Start:
