@@ -16,10 +16,11 @@ use cartesi_machine::{
 };
 use std::thread::sleep;
 use std::time::Duration;
-use vsock_protocol::VSOCK_OP_RESPONSE;
-use vsock_protocol::{Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_TYPE_STREAM};
+use vsock_protocol::{
+    Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_TYPE_STREAM,
+};
 
-const MACHINE_PATH: &str = "../../vc-cm-vsock-machine-v2";
+const MACHINE_PATH: &str = "../../vc-cm-snapshot-release";
 
 const HOST_CID: u32 = 3;
 const GUEST_CID: u32 = 1;
@@ -95,7 +96,10 @@ fn receive_and_log_response(machine: &mut Machine) -> Result<Packet, Box<dyn Err
         if data.len() > 0 {
             match Packet::from_bytes(&data) {
                 Ok(packet) => {
-                    info!("Successfully parsed vsock packet from response: {:?}", packet);
+                    info!(
+                        "Successfully parsed vsock packet from response: {:?}",
+                        packet
+                    );
                     let response_str = String::from_utf8_lossy(packet.payload());
                     info!(
                         "--- GUEST RESPONSE ---\n{}\n----------------------",
@@ -113,7 +117,33 @@ fn receive_and_log_response(machine: &mut Machine) -> Result<Packet, Box<dyn Err
         }
     }
 
-    Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No packet received")))
+    Err(Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "No packet received",
+    )))
+}
+
+fn handle_connection(machine: &mut Machine) -> Result<(), Box<dyn Error>> {
+    info!("Vsock connection established.");
+    loop {
+        info!("Connection active, running machine...");
+        run_machine_until_yield(machine)?;
+        match receive_and_log_response(machine) {
+            Ok(packet) => {
+                let (hdr, _) = packet.into_parts();
+                if hdr.op == VSOCK_OP_RST {
+                    info!("Received VSOCK_OP_RST, connection closed by peer.");
+                    break;
+                }
+            }
+            Err(e) => {
+                info!("Error on active connection: {}. Closing connection.", e);
+                break;
+            }
+        }
+        sleep(Duration::from_secs(1));
+    }
+    Ok(())
 }
 
 #[tokio::main]
@@ -122,22 +152,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("START RUNNER");
     info!("________________________________________________________");
 
-    let mut machine =
-        Machine::load(Path::new(MACHINE_PATH), &RuntimeConfig::default())?;
+    let mut machine = Machine::load(Path::new(MACHINE_PATH), &RuntimeConfig::default())?;
 
     run_machine_until_yield(&mut machine)?;
 
-    for i in 0..200 {
-        info!("Waiting for guest to connect... {}", i);
-     
-    
+    loop {
+        info!("Attempting to establish vsock connection...");
         send_connect_request(&mut machine)?;
-    
-        info!("Running machine to process request and get response...");
+
+        info!("Running machine to process connection request...");
         run_machine_until_yield(&mut machine)?;
-    
-        let packet = receive_and_log_response(&mut machine);
+
+        match receive_and_log_response(&mut machine) {
+            Ok(packet) => {
+                let (hdr, _) = packet.into_parts();
+                if hdr.op == VSOCK_OP_RESPONSE {
+                    handle_connection(&mut machine)?;
+                    info!("Connection closed. Will attempt to reconnect...");
+                } else {
+                    info!(
+                        "Received unexpected packet with op {} during connection setup. Retrying...",
+                        hdr.op
+                    );
+                }
+            }
+            Err(e) => {
+                info!("Failed to receive connection response: {}. Retrying...", e);
+            }
+        }
         sleep(Duration::from_secs(1));
     }
-    Ok(())
 }

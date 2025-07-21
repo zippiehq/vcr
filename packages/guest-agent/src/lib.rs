@@ -130,8 +130,7 @@ impl ConnectionManager {
             Ok(stream) => {
                 info!(target: "guest", "Connection to guest vsock successful for {:?}", key);
                 stream.set_nonblocking(true)?;
-                self.send_response_to_cmio(&request_hdr)?;
-
+                self.send_op_to_cmio(&request_hdr, VSOCK_OP_RESPONSE)?;
                 self.connections.insert(
                     key,
                     Connection {
@@ -142,7 +141,7 @@ impl ConnectionManager {
             }
             Err(e) => {
                 error!(target: "guest", "Failed to connect to guest vsock for {:?}: {}", key, e);
-                self.send_reset_to_cmio(&request_hdr)?;
+                self.send_op_to_cmio(&request_hdr, VSOCK_OP_RST)?;
             }
         }
         Ok(())
@@ -153,11 +152,13 @@ impl ConnectionManager {
         let mut to_remove = Vec::new();
         let mut packets_to_send = Vec::new();
         let mut resets_to_send = Vec::new();
+        let mut shutdowns_to_send = Vec::new();
 
         for (key, connection) in &mut self.connections {
             match connection.stream.read(&mut read_buf) {
                 Ok(0) => {
                     info!(target: "guest", "Vsock stream closed by peer for {:?}.", key);
+                    shutdowns_to_send.push(connection.request_hdr);
                     to_remove.push(*key);
                 }
                 Ok(n) => {
@@ -208,10 +209,21 @@ impl ConnectionManager {
         }
 
         for hdr in resets_to_send {
-            if let Err(e) = self.send_reset_to_cmio(&hdr) {
+            if let Err(e) = self.send_op_to_cmio(&hdr, VSOCK_OP_RST) {
                 error!(
                     target: "guest",
                     "Failed to send reset for {:?}: {}",
+                    ConnectionKey::from(&hdr),
+                    e
+                );
+            }
+        }
+
+        for hdr in shutdowns_to_send {
+            if let Err(e) = self.send_op_to_cmio(&hdr, VSOCK_OP_SHUTDOWN) {
+                error!(
+                    target: "guest",
+                    "Failed to send shutdown for {:?}: {}",
                     ConnectionKey::from(&hdr),
                     e
                 );
@@ -224,37 +236,29 @@ impl ConnectionManager {
             }
             info!(target: "guest", "Removed connection {:?}", key);
         }
-
         Ok(())
     }
 
-    fn send_response_to_cmio(&self, request_hdr: &VirtioVsockHdr) -> Result<(), Box<dyn Error>> {
-        info!(
-            target: "guest",
-            "Sending VSOCK_OP_RESPONSE to CMIO for {:?}",
-            ConnectionKey::from(request_hdr)
-        );
-        let resp_hdr = create_reply_header(request_hdr, VSOCK_OP_RESPONSE, 0);
-        let response_packet = Packet::new(resp_hdr, vec![]);
-        self.cmio_driver
-            .lock()
-            .unwrap()
-            .send_cmio(&response_packet.to_bytes(), CMIO_QUEUE_ID)?;
-        Ok(())
-    }
+    fn send_op_to_cmio(&self, request_hdr: &VirtioVsockHdr, op: u16) -> Result<(), Box<dyn Error>> {
+        let op_str = match op {
+            VSOCK_OP_RESPONSE => "VSOCK_OP_RESPONSE",
+            VSOCK_OP_RST => "VSOCK_OP_RST",
+            VSOCK_OP_SHUTDOWN => "VSOCK_OP_SHUTDOWN",
+            _ => "UNKNOWN_OP",
+        };
 
-    fn send_reset_to_cmio(&self, request_hdr: &VirtioVsockHdr) -> Result<(), Box<dyn Error>> {
         info!(
             target: "guest",
-            "Sending VSOCK_OP_RST to CMIO for {:?}",
+            "Sending {} to CMIO for {:?}",
+            op_str,
             ConnectionKey::from(request_hdr)
         );
-        let rst_hdr = create_reply_header(request_hdr, VSOCK_OP_RST, 0);
-        let rst_packet = Packet::new(rst_hdr, vec![]);
+        let reply_hdr = create_reply_header(request_hdr, op, 0);
+        let packet = Packet::new(reply_hdr, vec![]);
         self.cmio_driver
             .lock()
             .unwrap()
-            .send_cmio(&rst_packet.to_bytes(), CMIO_QUEUE_ID)?;
+            .send_cmio(&packet.to_bytes(), CMIO_QUEUE_ID)?;
         Ok(())
     }
 }
