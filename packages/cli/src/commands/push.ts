@@ -11,6 +11,7 @@ import {
   requireOciExportSupport
 } from '../checks';
 import { TarContextBuilder } from '../tar-context';
+import { showCommandHelp } from './help';
 
 // Import the getCacheDirectory function from build.ts
 function getCacheDirectory(imageTag?: string, profile?: string): string {
@@ -66,6 +67,12 @@ function resolveRegistryPath(registryPath: string): { resolvedPath: string; conf
 }
 
 export function handlePushCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('push');
+    return;
+  }
+  
   checkBuildxAvailable();
   checkRiscv64Support();
   requireOciExportSupport();

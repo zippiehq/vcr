@@ -12,6 +12,7 @@ import { handleCreateCommand } from './commands/create';
 import { handleExportCommand } from './commands/export';
 import { handleIntroCommand } from './commands/intro';
 import { handlePushCommand } from './commands/push';
+import { showCommandHelp } from './commands/help';
 import { checkDockerAvailable } from './checks';
 
 export function getPathHash(): string {
@@ -68,7 +69,7 @@ function showHelp() {
   console.log(`
 🚀 vcr CLI - Verifiable Container Runner
 
-📋 Usage:
+📋 Commands:
   🆕 vcr intro                           Show introduction and quick start guide
   🏗️  vcr create <dir> --template <lang>  Create new project from template
   🔨 vcr build <profile> [options]       Build container images
@@ -81,7 +82,6 @@ function showHelp() {
   📖 vcr cat <file-path>                 View file contents in container
   📦 vcr export <profile> <path> [options]  Export profile artifacts to directory
   🧹 vcr prune [--local]                 Clean up VCR environment
-  ❓ vcr --help                          Show this help message
 
 🎯 Profiles:
   🚀 dev          - Native platform, fastest development
@@ -90,34 +90,12 @@ function showHelp() {
   🔐 prod         - Verifiable RISC-V Cartesi Machine
   🐛 prod-debug   - Verifiable RISC-V with debug tools
 
-⚙️  Common Options:
-  🏷️  -t, --tag <name:tag>                Custom image tag
-  🔄 --force-rebuild                     Force rebuild all artifacts
-  🏗️  --depot                             Use depot build instead of docker buildx
-  🚫 --no-tar-context                    Disable deterministic tar context
-  🐳 --force-docker-tar                  Force using Docker for tar creation
-  ⚡ --turbo                              Enable multi-core QEMU (stage profiles only)
-  🤖 --guest-agent-image <image>         Custom guest agent image (prod/prod-debug only)
-  🔥 --hot                               Enable hot reload (in-container file watching if supported, otherwise rebuild on changes)
-  💻 --system                            Target system instead of container
-  📺 -f, --follow                        Follow logs in real-time
-
-💡 Examples:
-  🆕 vcr intro                           # Get started guide
-  🏗️  vcr create myapp --template python  # New Python project
-  🚀 vcr up dev                          # Build and run (fastest)
-  🧪 vcr up stage                        # Build and run (RISC-V testing)
-  🔐 vcr up prod                         # Build and run (verifiable)
-  🔐 vcr up prod --guest-agent-image my-registry/guest-agent:v2  # Custom guest agent
-  📤 vcr push my-registry.com/myapp:latest  # Build and push RISC-V container
-  📤 vcr push ghcr.io/myuser/myapp:v1.0.0  # Push to GitHub Container Registry
-  🔥 vcr up dev --hot                    # Hot reload (file watching)
-  🔥 vcr up stage --hot                  # Hot reload (rebuild on changes)
-  🔥 vcr up prod --hot                   # Hot reload (rebuild on changes)
-  📦 vcr export prod ./deployment --guest-agent-image my-registry/guest-agent:v2  # Export with custom guest agent
-  📄 vcr logs                            # View application logs
-  ⚡ vcr exec "ls -la"                   # Run command in container
-  🛑 vcr down                            # Stop environment
+💡 Quick Start:
+  vcr intro                              # Get started guide
+  vcr create myapp --template python     # New Python project
+  vcr up dev                             # Build and run (fastest)
+  vcr up stage                           # Build and run (RISC-V testing)
+  vcr up prod                            # Build and run (verifiable)
 
 📚 For detailed help: vcr <command> --help
 `);
@@ -150,7 +128,7 @@ function main() {
   
   const args = process.argv.slice(2);
   
-  if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+  if (args.length === 0) {
     showHelp();
     return;
   }
@@ -159,7 +137,7 @@ function main() {
   
   switch (command) {
     case 'intro':
-      handleIntroCommand();
+      handleIntroCommand(args);
       break;
       
     case 'build':

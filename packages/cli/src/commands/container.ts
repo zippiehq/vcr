@@ -8,8 +8,15 @@ import {
   detectProfileAndSshKey, 
   getPathHash 
 } from '../cli';
+import { showCommandHelp } from './help';
 
 export function handleLogsCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('logs');
+    return;
+  }
+  
   try {
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     if (existsSync(composePath)) {
@@ -64,6 +71,12 @@ export function handleLogsCommand(args: string[]): void {
 }
 
 export function handleExecCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('exec');
+    return;
+  }
+  
   try {
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     if (existsSync(composePath)) {
@@ -141,6 +154,12 @@ export function handleExecCommand(args: string[]): void {
 }
 
 export function handleShellCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('shell');
+    return;
+  }
+  
   try {
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     if (existsSync(composePath)) {
@@ -211,6 +230,12 @@ export function handleShellCommand(args: string[]): void {
 }
 
 export function handleCatCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('cat');
+    return;
+  }
+  
   try {
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     if (existsSync(composePath)) {

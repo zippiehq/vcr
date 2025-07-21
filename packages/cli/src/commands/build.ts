@@ -26,6 +26,9 @@ import { generateLinuxKitYaml, generateDockerCompose } from '../generate';
 // Import tar context builder
 import { TarContextBuilder } from '../tar-context';
 
+// Import help function
+import { showCommandHelp } from './help';
+
 // Function to detect current profile from running containers
 function detectCurrentProfile(): string | null {
   const pathHash = getPathHash();
@@ -69,6 +72,12 @@ function hasHotReloadSupport(imageTag: string): boolean {
 }
 
 export function handleBuildCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('build');
+    return;
+  }
+  
   checkBuildxAvailable();
   checkVcrBuilder();
   // Removed: checkLocalRegistry();
@@ -84,6 +93,7 @@ export function handleBuildCommand(args: string[]): void {
   let turbo = false; // Enable multi-core QEMU for stage profiles
   let guestAgentImage: string | undefined; // Guest agent image for prod/prod-debug profiles
   let hot = false; // Enable hot reloading for dev profile
+  let useExistingImage: string | undefined; // Use existing Docker image instead of building
 
   // Parse build arguments
   for (let i = 1; i < args.length; i++) {
@@ -128,6 +138,14 @@ export function handleBuildCommand(args: string[]): void {
       }
     } else if (arg === '--hot') {
       hot = true;
+    } else if (arg === '--image') {
+      if (nextArg) {
+        useExistingImage = nextArg;
+        i++; // Skip next argument
+      } else {
+        console.error('Error: --image requires a value');
+        process.exit(1);
+      }
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
@@ -141,6 +159,18 @@ export function handleBuildCommand(args: string[]): void {
     } else {
       useTarContext = false;
     }
+  }
+
+  // Validate --image and --hot are not used together
+  if (useExistingImage && hot) {
+    console.error('Error: --image and --hot are incompatible options');
+    process.exit(1);
+  }
+
+  // If using existing image, set imageTag to the provided image
+  if (useExistingImage) {
+    imageTag = useExistingImage;
+    console.log(`Using existing image: ${imageTag}`);
   }
 
   // Auto-detect depot.json if neither --depot nor --no-depot was specified
@@ -170,10 +200,16 @@ export function handleBuildCommand(args: string[]): void {
     requireOciExportSupport();
   }
 
-  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
+  buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot, useExistingImage);
 }
 
 export function handleUpCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('up');
+    return;
+  }
+  
   checkBuildxAvailable();
   checkVcrBuilder();
   // Removed: checkLocalRegistry();
@@ -190,6 +226,7 @@ export function handleUpCommand(args: string[]): void {
   let turbo = false; // Enable multi-core QEMU for stage profiles
   let guestAgentImage: string | undefined; // Guest agent image for prod/prod-debug profiles
   let hot = false; // Enable hot reloading for dev profile
+  let useExistingImage: string | undefined; // Use existing Docker image instead of building
 
   // Parse up arguments
   for (let i = 1; i < args.length; i++) {
@@ -236,10 +273,30 @@ export function handleUpCommand(args: string[]): void {
       }
     } else if (arg === '--hot') {
       hot = true;
+    } else if (arg === '--image') {
+      if (nextArg) {
+        useExistingImage = nextArg;
+        i++; // Skip next argument
+      } else {
+        console.error('Error: --image requires a value');
+        process.exit(1);
+      }
     } else if (!arg.startsWith('-')) {
       // First non-flag argument is the profile
       profile = arg;
     }
+  }
+
+  // Validate --image and --hot are not used together
+  if (useExistingImage && hot) {
+    console.error('Error: --image and --hot are incompatible options');
+    process.exit(1);
+  }
+
+  // If using existing image, set imageTag to the provided image
+  if (useExistingImage) {
+    imageTag = useExistingImage;
+    console.log(`Using existing image: ${imageTag}`);
   }
 
   // Set useTarContext default based on profile if not overridden
@@ -276,7 +333,7 @@ export function handleUpCommand(args: string[]): void {
     requireOciExportSupport();
   }
 
-  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
+  runDevEnvironment(imageTag, profile, cacheDir, forceRebuild, forceRestart, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot, useExistingImage);
 }
 
 // Helper functions that need to be copied from cli.ts
@@ -403,6 +460,8 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
         console.log(`Executing: ${importCommand.join(' ')}`);
         execSync(importCommand.join(' '), { stdio: 'inherit', cwd: currentDir });
         console.log('✅ OCI image imported into LinuxKit cache');
+      } else if (!ociTarPath) {
+        console.log('ℹ️  No OCI tar provided - using image reference directly in LinuxKit YAML');
       }
       
           const command = [
@@ -723,8 +782,23 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   }
 }
 
-export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, hot = false): string | undefined {
+export function buildImage(imageTag: string, profile: string, userCacheDir?: string, forceRebuild = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, hot = false, useExistingImage?: string): string | undefined {
   const currentDir = cwd();
+  
+  // If using existing image, skip build process
+  if (useExistingImage) {
+    console.log(`Using existing image: ${imageTag}`);
+    console.log(`Profile: ${profile}`);
+    
+    // For stage/prod profiles, we'll use the image reference directly in LinuxKit YAML
+    if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
+      console.log('✅ Using existing image for stage/prod profile - will reference directly in LinuxKit YAML');
+      return undefined; // No OCI tar needed
+    }
+    
+    return undefined; // No build needed
+  }
+  
   console.log(`Building image: ${imageTag}`);
   console.log(`Profile: ${profile}`);
   if (useDepot) {
@@ -961,8 +1035,28 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
   }
 }
 
-export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, hot = false) {
+export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: string, forceRebuild = false, forceRestart = false, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, hot = false, useExistingImage?: string) {
   console.log('Starting development environment...');
+  
+  // If using existing image, skip build process
+  if (useExistingImage) {
+    console.log(`Using existing image: ${imageTag}`);
+    console.log(`Profile: ${profile}`);
+    
+    // For stage/prod profiles, we'll use the image reference directly in LinuxKit YAML
+    if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
+      console.log('✅ Using existing image for stage/prod profile - will reference directly in LinuxKit YAML');
+      // Generate LinuxKit YAML with direct image reference
+      const yamlPath = generateLinuxKitYaml(imageTag, profile, cacheDir, undefined, guestAgentImage);
+      buildLinuxKitImage(yamlPath, profile, undefined, cacheDir, forceRebuild);
+      return;
+    }
+    
+    // For dev profile, just start the container with the existing image
+    console.log('✅ Using existing image for dev profile');
+    startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false, hot, useExistingImage);
+    return;
+  }
   
   try {
     // Check for potential port conflicts
@@ -992,8 +1086,8 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     // Check for vsock support
     checkVsockSupport();
     
-    // Build the container
-    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
+    // Build the container (or use existing image)
+    const ociTarPath = buildImage(imageTag, profile, cacheDir, forceRebuild, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot, useExistingImage);
     
     const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
     let needsUpdate = false;
@@ -1162,7 +1256,7 @@ function buildDevContainer() {
 } 
 
 // File watcher for stage/prod hot reload
-function startFileWatcher(imageTag: string, profile: string, cacheDir?: string, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, skipMessage = false, hot = false) {
+function startFileWatcher(imageTag: string, profile: string, cacheDir?: string, useDepot = false, useTarContext = true, forceDockerTar = false, turbo = false, guestAgentImage?: string, skipMessage = false, hot = false, useExistingImage?: string) {
   const currentDir = cwd();
   if (!skipMessage) {
     console.log(`\n🔥 Hot reload enabled for ${profile} profile`);
@@ -1184,21 +1278,39 @@ function startFileWatcher(imageTag: string, profile: string, cacheDir?: string, 
     console.log(`\n🔄 File change detected! Rebuilding and restarting...`);
 
     try {
-      if (profile === 'dev') {
-        // For dev profile, just rebuild the image and swap the container
-        console.log('Building new image...');
-        buildImage(imageTag, profile, cacheDir, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
+      // If using existing image, skip build process
+      if (useExistingImage) {
+        console.log('ℹ️  Using existing image - skipping build process');
         
-        // Swap out just the isolated_service container
-        const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
-        console.log('Swapping isolated_service container...');
-        execSync(`docker compose -f ${composePath} up -d --force-recreate --wait isolated_service`, { stdio: 'inherit' });
-        
-        console.log(`✅ Dev environment rebuilt and restarted successfully!`);
+        if (profile === 'dev') {
+          // For dev profile, just restart the container
+          const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+          console.log('Restarting isolated_service container...');
+          execSync(`docker compose -f ${composePath} up -d --force-recreate --wait isolated_service`, { stdio: 'inherit' });
+          console.log(`✅ Dev environment restarted successfully!`);
+        } else {
+          // For stage/prod profiles, regenerate LinuxKit YAML and rebuild
+          const yamlPath = generateLinuxKitYaml(imageTag, profile, cacheDir, undefined, guestAgentImage);
+          buildLinuxKitImage(yamlPath, profile, undefined, cacheDir, true);
+          console.log(`✅ Environment rebuilt and restarted successfully!`);
+        }
       } else {
-        // For stage/prod profiles, use the full rebuild approach
-        runDevEnvironment(imageTag, profile, cacheDir, true, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false); // hot=false to avoid infinite recursion
-        console.log(`✅ Environment rebuilt and restarted successfully!`);
+        if (profile === 'dev') {
+          // For dev profile, just rebuild the image and swap the container
+          console.log('Building new image...');
+          buildImage(imageTag, profile, cacheDir, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, hot);
+          
+          // Swap out just the isolated_service container
+          const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+          console.log('Swapping isolated_service container...');
+          execSync(`docker compose -f ${composePath} up -d --force-recreate --wait isolated_service`, { stdio: 'inherit' });
+          
+          console.log(`✅ Dev environment rebuilt and restarted successfully!`);
+        } else {
+          // For stage/prod profiles, use the full rebuild approach
+          runDevEnvironment(imageTag, profile, cacheDir, true, false, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false); // hot=false to avoid infinite recursion
+          console.log(`✅ Environment rebuilt and restarted successfully!`);
+        }
       }
       
     } catch (err) {

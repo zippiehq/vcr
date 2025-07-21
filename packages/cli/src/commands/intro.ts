@@ -1,6 +1,13 @@
 import { execSync } from 'child_process';
+import { showCommandHelp } from './help';
 
-export function handleIntroCommand(): void {
+export function handleIntroCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('intro');
+    return;
+  }
+  
   console.log(`
 🚀 VCR - Verifiable Container Runner
 ====================================

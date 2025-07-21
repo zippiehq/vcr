@@ -4,6 +4,7 @@ import { join, resolve } from 'path';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { getComposeCacheDirectory, detectProfileAndSshKey, getPathHash } from '../cli';
+import { showCommandHelp } from './help';
 
 // Import the updated getCacheDirectory function from build.ts
 function getCacheDirectory(imageTag?: string, profile?: string, guestAgentImage?: string): string {
@@ -27,6 +28,12 @@ function getCacheDirectory(imageTag?: string, profile?: string, guestAgentImage?
 }
 
 export function handleExportCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('export');
+    return;
+  }
+  
   try {
     // Parse export arguments
     if (args.length < 3) {

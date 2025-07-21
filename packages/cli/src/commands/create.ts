@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { showCommandHelp } from './help';
 
 export function createProject(targetDir: string, template: string) {
   console.log(`Creating new VCR project: ${targetDir}`);
@@ -100,6 +101,12 @@ export function createProject(targetDir: string, template: string) {
 }
 
 export function handleCreateCommand(args: string[]): void {
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    showCommandHelp('create');
+    return;
+  }
+  
   let projectName: string | undefined;
   let template: string | undefined;
   
