@@ -122,6 +122,9 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   - path: usr/bin/perf-qemu-riscv64
     source: /usr/share/qemu/perf-qemu-riscv64
     mode: "0755"
+  - path: usr/bin/perf-cm-riscv64
+    source: /usr/share/qemu/perf-cm-riscv64
+    mode: "0755"
 `;
   }
   
