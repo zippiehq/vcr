@@ -405,7 +405,7 @@ Run the Linux perf tool inside the system VM for performance analysis.
 🔧 Supported subcommands:
   record    - Start a perf recording
   top       - Show live profiling
-  stat      - Show performance statistics (extra args supported)
+  report    - Analyze perf data
 
 🎯 Profiles:
   🧪 stage        - Uses QEMU, runs: /proc/1/root/usr/bin/perf-cm-riscv64 <subcommand> [args]
@@ -414,12 +414,12 @@ Run the Linux perf tool inside the system VM for performance analysis.
 ⚙️  Behavior:
   • record:   stage → 'record', prod-debug → 'record -e cpu-clock -F max'
   • top:      stage → 'top',    prod-debug → 'top -e cpu-clock -F max'
-  • stat:     Both → 'stat' (plus any extra args)
+  • report:   Both → 'report' (plus any extra args)
 
 💡 Examples:
   vcr perf record
   vcr perf top
-  vcr perf stat -e cycles -r 5
+  vcr perf report -i perf.data
 
 🔒 Only available for stage and prod-debug profiles.
 `);

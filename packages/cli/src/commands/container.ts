@@ -318,12 +318,10 @@ export function handlePerfCommand(args: string[]): void {
     if (profile === 'prod-debug') {
       perfArgs.push('-e', 'cpu-clock', '-F', 'max');
     }
-  } else if (subcommand === 'stat') {
-    perfArgs = ['stat', ...extraArgs];
   } else if (subcommand === 'report') {
     perfArgs = ['report', ...extraArgs];
   } else {
-    console.error('Unknown perf subcommand. Supported: record, top, stat, report');
+    console.error('Unknown perf subcommand. Supported: record, top, report');
     process.exit(1);
   }
 
