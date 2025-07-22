@@ -9,21 +9,21 @@ Currently unlicensed.
 ## 🚀 Quick Start
 
 ```bash
-# Get started
-vcr intro
+# Install
+npm install -g @zippie/vcr
+
+# Create and run
 vcr create myapp --template python
-
-# Build and run
-vcr up                    # Fast dev build
-vcr up stage             # RISC-V testing
-vcr up prod              # Verifiable build
-
-# Development
-vcr logs                 # View logs
-vcr shell                # Open shell
-vcr exec "ls -la"        # Run command
-vcr down                 # Stop environment
+cd myapp
+vcr up dev --hot
 ```
+
+## 📚 Documentation
+
+- **[Quick Start & Profiles](docs/README.md)** - Get up and running fast
+- **[Workflow Guide](docs/workflow.md)** - Detailed development process  
+- **[CLI Reference](docs/reference.md)** - Complete command reference
+- **[Advanced Topics](docs/advanced.md)** - Power user features
 
 ## 🏗️ Build Profiles
 
@@ -38,12 +38,8 @@ vcr down                 # Stop environment
 - Docker and buildx
 - vsock support (auto-installed if needed)
 
-## 💡 Pro Tips
-
-- Use `dev` for fast development loops
-- Use `stage` for RISC-V testing
-- Use `prod` for verifiable, attested builds
-
 ---
 
-**That's it!** VCR handles the complexity of building verifiable, deterministic containers. 
+**That's it!** VCR handles the complexity of building verifiable, deterministic containers.
+
+**Need help?** Check the [documentation](docs/README.md) or run `vcr --help`. 

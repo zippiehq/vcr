@@ -46,10 +46,10 @@ vcr push ghcr.io/your-org/myapp:latest
 | Profile        | What it does           | Speed         | Debug         |
 |---------------|-----------------------|---------------|--------------|
 | `dev`         | Runs on your computer | Fastest       | Full tools    |
-| `stage`       | RISC-V emulation      | ~2.3x slower  | SSH + perf    |
-| `stage-release`| RISC-V emulation     | ~2.3x slower  | SSH only      |
-| `prod`        | Verifiable RISC-V     | ~2.3x slower  | None          |
-| `prod-debug`  | Verifiable RISC-V     | ~2.3x slower  | SSH + perf    |
+| `stage`       | RISC-V emulation      | 2.5x slower than dev | SSH + perf    |
+| `stage-release`| RISC-V emulation     | 2.5x slower than dev | None          |
+| `prod`        | Verifiable RISC-V     | 2.5x slower than stage | None          |
+| `prod-debug`  | Verifiable RISC-V     | 2.5x slower than stage | SSH + perf    |
 
 **Hot reload:** Add `--hot` to any profile for auto-restart on file changes.
 
