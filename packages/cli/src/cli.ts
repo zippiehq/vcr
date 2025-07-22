@@ -6,7 +6,7 @@ import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { createHash } from 'crypto';
 import { handleBuildCommand, handleUpCommand } from './commands/build';
-import { handleLogsCommand, handleExecCommand, handleShellCommand, handleCatCommand } from './commands/container';
+import { handleLogsCommand, handleExecCommand, handleShellCommand, handleCatCommand, handlePerfCommand } from './commands/container';
 import { pruneVcrLocal, pruneVcr } from './commands/prune';
 import { handleCreateCommand } from './commands/create';
 import { handleExportCommand } from './commands/export';
@@ -35,31 +35,18 @@ export function getComposeCacheDirectory(): string {
 export function detectProfileAndSshKey(): { profile: 'dev' | 'stage' | 'stage-release' | 'prod' | 'prod-debug', sshKeyPath?: string } {
   const pathHash = getPathHash();
   const containerName = `${pathHash}-vcr-isolated-service`;
-  
+
   try {
-    const containerInfo = execSync(`docker inspect ${containerName} --format '{{.Config.Image}}'`, { encoding: 'utf8' }).trim();
-    
-    if (containerInfo === 'ghcr.io/zippiehq/vcr-snapshot-builder') {
-      // This is a stage or prod profile - determine which one
-      try {
-        const containerCmd = execSync(`docker inspect ${containerName} --format '{{join .Config.Cmd " "}}'`, { encoding: 'utf8' }).trim();
-        if (containerCmd.includes('cartesi-machine')) {
-          // Check if it's prod or prod-debug by looking for debug tools
-          // For now, assume prod (we could enhance this by checking for debug services)
-          return { profile: 'prod', sshKeyPath: '/work/ssh.debug-key' };
-        } else {
-          // Check if it's stage or stage-release by looking for debug tools
-          // For now, assume stage (we could enhance this by checking for debug services)
-          return { profile: 'stage', sshKeyPath: '/work/ssh.debug-key' };
-        }
-      } catch (cmdErr) {
-        // Fallback to stage if we can't determine
-        return { profile: 'stage', sshKeyPath: '/work/ssh.debug-key' };
-      }
+    // Get the profile label from the container
+    const profileLabel = execSync(`docker inspect ${containerName} --format '{{ index .Config.Labels "vcr.profile" }}'`, { encoding: 'utf8' }).trim();
+    if (profileLabel === 'stage' || profileLabel === 'stage-release' || profileLabel === 'prod' || profileLabel === 'prod-debug') {
+      // Only debug profiles have SSH key
+      const sshKeyPath = (profileLabel === 'stage' || profileLabel === 'prod-debug') ? '/work/ssh.debug-key' : undefined;
+      return { profile: profileLabel as any, sshKeyPath };
     } else {
       return { profile: 'dev' };
     }
-  } catch (inspectErr) {
+  } catch (err) {
     // Fallback to dev profile if we can't inspect the container
     return { profile: 'dev' };
   }
@@ -82,6 +69,7 @@ function showHelp() {
   📖 vcr cat <file-path>                 View file contents in container
   📦 vcr export <profile> <path> [options]  Export profile artifacts to directory
   🧹 vcr prune [--local]                 Clean up VCR environment
+  🎼 vcr perf <subcommand> [args]        Run Linux perf tool in stage/prod-debug
 
 🎯 Profiles:
   🚀 dev          - Native platform, fastest development
@@ -214,6 +202,10 @@ function main() {
       
     case 'create':
       handleCreateCommand(args);
+      break;
+      
+    case 'perf':
+      handlePerfCommand(args);
       break;
       
     default:

@@ -33,6 +33,9 @@ export function showCommandHelp(command: string): void {
     case 'intro':
       showIntroHelp();
       break;
+    case 'perf':
+      showPerfHelp();
+      break;
     default:
       console.log(`❓ Unknown command: ${command}`);
       console.log('Use "vcr --help" to see all available commands');
@@ -386,5 +389,38 @@ Show introduction and quick start guide for VCR.
   • Perfect for new users
   • Shows complete workflow from creation to deployment
   • Includes examples for all major use cases
+`);
+}
+
+function showPerfHelp(): void {
+  console.log(`
+🎼 vcr perf - Run Linux perf tool in stage/prod-debug
+====================================================
+
+Run the Linux perf tool inside the system VM for performance analysis.
+
+📋 Usage:
+  vcr perf <subcommand> [args]
+
+🔧 Supported subcommands:
+  record    - Start a perf recording
+  top       - Show live profiling
+  stat      - Show performance statistics (extra args supported)
+
+🎯 Profiles:
+  🧪 stage        - Uses QEMU, runs: /proc/1/root/usr/bin/perf-cm-riscv64 <subcommand> [args]
+  🐛 prod-debug   - Uses Cartesi Machine, runs: /proc/1/root/usr/bin/perf-cm-riscv64 <subcommand> [args]
+
+⚙️  Behavior:
+  • record:   stage → 'record', prod-debug → 'record -e cpu-clock -F max'
+  • top:      stage → 'top',    prod-debug → 'top -e cpu-clock -F max'
+  • stat:     Both → 'stat' (plus any extra args)
+
+💡 Examples:
+  vcr perf record
+  vcr perf top
+  vcr perf stat -e cycles -r 5
+
+🔒 Only available for stage and prod-debug profiles.
 `);
 } 

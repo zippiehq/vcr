@@ -288,3 +288,75 @@ export function handleCatCommand(args: string[]): void {
     }
   }
 } 
+
+export function handlePerfCommand(args: string[]): void {
+  // Only allow for stage and prod-debug
+  const { profile } = detectProfileAndSshKey();
+  if (profile !== 'stage' && profile !== 'prod-debug') {
+    console.error('vcr perf is only available for stage and prod-debug profiles.');
+    process.exit(1);
+  }
+
+  // Help
+  if (args.length < 2 || args[1] === '--help' || args[1] === '-h') {
+    showCommandHelp('perf');
+    return;
+  }
+
+  const subcommand = args[1];
+  const extraArgs = args.slice(2);
+  const perfBin = '/proc/1/root/usr/bin/perf-cm-riscv64';
+  let perfArgs: string[] = [];
+
+  if (subcommand === 'record') {
+    perfArgs = ['record'];
+    if (profile === 'prod-debug') {
+      perfArgs.push('-e', 'cpu-clock', '-F', 'max');
+    }
+  } else if (subcommand === 'top') {
+    perfArgs = ['top'];
+    if (profile === 'prod-debug') {
+      perfArgs.push('-e', 'cpu-clock', '-F', 'max');
+    }
+  } else if (subcommand === 'stat') {
+    perfArgs = ['stat', ...extraArgs];
+  } else if (subcommand === 'report') {
+    perfArgs = ['report', ...extraArgs];
+  } else {
+    console.error('Unknown perf subcommand. Supported: record, top, stat, report');
+    process.exit(1);
+  }
+
+  // Compose the command to run in the system container
+  const fullCmd = [perfBin, ...perfArgs].join(' ');
+
+  // Use TTY for record, top, and report
+  const useTty = (subcommand === 'top' || subcommand === 'report' || subcommand === 'record');
+  const dockerExec = useTty ? 'docker exec -it' : 'docker exec';
+  const sshFlags = useTty ? '-t' : '';
+
+  try {
+    const composePath = join(getComposeCacheDirectory(), 'docker-compose.dev.json');
+    if (existsSync(composePath)) {
+      const pathHash = getPathHash();
+      const containerName = `${pathHash}-vcr-isolated-service`;
+      try {
+        execSync(`${dockerExec} ${containerName} ssh ${sshFlags} -o StrictHostKeyChecking=no -i /work/ssh.debug-key -p 8022 localhost "${fullCmd}"`, { stdio: 'inherit' });
+      } catch (err) {
+        if (subcommand === 'record') {
+          // Ignore errors/exit code for perf record
+          return;
+        } else {
+          console.error('Error running perf:', err);
+          process.exit(1);
+        }
+      }
+    } else {
+      console.log('ℹ️  No docker-compose.dev.json found for current directory');
+      console.log('Run "vcr up stage" or "vcr up prod-debug" first.');
+    }
+  } catch (err) {
+    console.error('Error running perf:', err);
+    process.exit(1);
+  }
+} 
