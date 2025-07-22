@@ -18,7 +18,7 @@ cd myapp
 # Fast development (your computer's CPU)
 vcr up dev --hot
 ```
-> **Note:** The `--hot` flag restarts the environment automatically whenever files are changed (hot reload).
+> **Note:** The `--hot` flag restarts the environment automatically whenever files are changed (hot reload). Now available for all profiles, including `prod`.
 
 ```bash
 # Test in RISC-V (closer to production)
@@ -27,7 +27,7 @@ vcr up stage --hot
 
 # Production build (verifiable)
 vcr down
-vcr up prod
+vcr up prod --hot
 ```
 
 ### 3. Deploy
@@ -51,7 +51,7 @@ vcr push ghcr.io/your-org/myapp:latest
 | `prod`        | Verifiable RISC-V     | ~2.3x slower  | None          |
 | `prod-debug`  | Verifiable RISC-V     | ~2.3x slower  | SSH + perf    |
 
-**Hot reload:** Add `--hot` to `dev`, `stage`, `stage-release`, or `prod-debug` for auto-restart on file changes.
+**Hot reload:** Add `--hot` to any profile for auto-restart on file changes.
 
 ---
 

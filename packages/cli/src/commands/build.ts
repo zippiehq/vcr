@@ -1205,7 +1205,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     }
     
     // Start file watcher for stage/prod profiles with hot reload
-    if (hot && (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug')) {
+    if (hot && (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug' || profile === 'dev')) {
       startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false, hot, useExistingImage);
     }
     

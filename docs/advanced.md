@@ -19,6 +19,9 @@ vcr up prod --cache-dir /path/to/cache
 
 # Use depot for faster builds
 vcr up prod --depot
+
+# Enable hot reload for any profile
+vcr up prod --hot
 ```
 
 ### Build System Options
@@ -142,7 +145,7 @@ docker system prune -f
 ### Limitations
 - Only works with `--hot` flag explicitly set
 - File changes trigger full container restart
-- Available in `dev`, `stage`, `stage-release`, and `prod-debug` profiles only
+- Available in all profiles, including `prod`
 
 ---
 

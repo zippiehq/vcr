@@ -19,44 +19,48 @@ vcr up dev --hot
 
 ### 2. Stage Profile (Testing)
 ```bash
-vcr up stage
+vcr up stage --hot
 ```
 - RISC-V emulation via QEMU
 - SSH access for debugging
 - Performance profiling with `vcr perf`
+- Hot reload with `--hot` flag
 - ~2.3x slower than dev
 
 **When to use:** Testing RISC-V compatibility, performance analysis
 
 ### 3. Stage-Release Profile (Testing)
 ```bash
-vcr up stage-release
+vcr up stage-release --hot
 ```
 - RISC-V emulation via QEMU
 - SSH access for debugging
 - No performance profiling tools
+- Hot reload with `--hot` flag
 - ~2.3x slower than dev
 
 **When to use:** Testing RISC-V compatibility without debug overhead
 
 ### 4. Prod Profile (Production)
 ```bash
-vcr up prod
+vcr up prod --hot
 ```
 - Verifiable Cartesi Machine
 - Deterministic builds
 - No debug tools
+- Hot reload with `--hot` flag
 - ~2.3x slower than stage
 
 **When to use:** Final builds, deployment
 
 ### 5. Prod-Debug Profile (Production Debug)
 ```bash
-vcr up prod-debug
+vcr up prod-debug --hot
 ```
 - Verifiable Cartesi Machine
 - SSH access for debugging
 - Performance profiling with `vcr perf`
+- Hot reload with `--hot` flag
 - ~2.3x slower than stage
 
 **When to use:** Debugging production builds
@@ -67,7 +71,7 @@ vcr up prod-debug
 
 ### SSH Access
 ```bash
-# Connect to stage/stage-release/prod-debug
+# Connect to stage/stage-release/prod/prod-debug
 vcr shell --system
 
 # Run commands
