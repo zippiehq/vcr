@@ -73,10 +73,7 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   let services = '';
   
   if (includeDebugTools) {
-    services += `  - name: getty
-    image: ghcr.io/zippiehq/vcr-getty@sha256:f1e8a4fbdbc7bf52eaad06bd59aa1268c91eb11bd615d3c27e93d8a35c0d8b7a
-    env:
-     - INSECURE=true
+    services += `
   - name: sshd
     image: ghcr.io/zippiehq/vcr-linuxkit-sshd@sha256:448f0a6f0b30e7f6f4a28ab11268b07ed2fb81a4d4feb1092c0b16a126d33183
     binds.add:
