@@ -2,6 +2,10 @@
 
 Build and run **verifiable, deterministic containers** with RISC-V support and attestation.
 
+## ⚠️ Development Status
+
+**This project is under heavy development and is not recommended for production use.** Features, APIs, and behavior may change without notice.
+
 ## License
 
 Currently unlicensed.
