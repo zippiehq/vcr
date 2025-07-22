@@ -149,6 +149,21 @@ docker system prune -f
 
 ---
 
+## ⚡ Turbo Mode (QEMU Multi-Core)
+
+The `--turbo` flag enables multi-core QEMU emulation for the `stage` and `stage-release` profiles.
+
+- **What it does:** Runs the RISC-V environment with multiple CPU cores for faster emulation.
+- **When to use:** Use `--turbo` for faster development and testing in `stage`/`stage-release` profiles when you want better performance than single-core emulation.
+- **Limitations:** The environment is not bit-for-bit reproducible and may not match production (Cartesi Machine) behavior. Do not use for final production builds or reproducibility testing.
+
+**Example:**
+```bash
+vcr up stage --turbo
+```
+
+---
+
 ## 🏗️ Build System Options
 
 ### Depot vs Docker Buildx
