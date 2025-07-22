@@ -16,6 +16,21 @@ vcr up prod --image ghcr.io/org/myapp:latest
 
 # Custom cache directory
 vcr up prod --cache-dir /path/to/cache
+
+# Use depot for faster builds
+vcr up prod --depot
+```
+
+### Build System Options
+```bash
+# Use depot build instead of docker buildx
+vcr up prod --depot
+
+# Force docker buildx (disable depot)
+vcr up prod --no-depot
+
+# Force Docker for tar creation
+vcr up prod --force-docker-tar
 ```
 
 ### Debug & Inspection
@@ -128,6 +143,20 @@ docker system prune -f
 - Only works with `--hot` flag explicitly set
 - File changes trigger full container restart
 - Available in `dev`, `stage`, `stage-release`, and `prod-debug` profiles only
+
+---
+
+## 🏗️ Build System Options
+
+### Depot vs Docker Buildx
+- **--depot**: Uses depot build system for faster builds (auto-detected if depot.json exists)
+- **--no-depot**: Forces docker buildx instead of depot
+- **--force-docker-tar**: Forces Docker for tar creation instead of VCR snapshot builder
+
+### When to Use Depot
+- Faster builds for large projects
+- Better caching and parallelization
+- Automatic detection if `depot.json` exists in project root
 
 ---
 
