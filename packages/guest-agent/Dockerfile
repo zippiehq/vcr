@@ -38,9 +38,6 @@ CXX_riscv64gc_unknown_linux_musl = "riscv64-unknown-linux-musl-g++"\n\
 AR_riscv64gc_unknown_linux_musl = "riscv64-unknown-linux-musl-ar"' > /root/.cargo/config.toml
 
 WORKDIR /build
-RUN git clone https://github.com/marlinprotocol/oyster-monorepo
-RUN cd oyster-monorepo/networking/tcp-proxy && cargo build --release --target riscv64gc-unknown-linux-musl && cd /build
-
 WORKDIR /app
 
 # Copy source files
@@ -67,7 +64,5 @@ CMD []
 WORKDIR /
 COPY --from=mirror /out/ /
 COPY --from=builder /app/packages/guest-agent/target/riscv64gc-unknown-linux-musl/release/guest-agent /bin/guest-agent
-COPY --from=builder /build/oyster-monorepo/networking/tcp-proxy/target/riscv64gc-unknown-linux-musl/release/vsock-to-ip /bin/vsock-to-ip
-COPY --from=builder /build/oyster-monorepo/networking/tcp-proxy/target/riscv64gc-unknown-linux-musl/release/ip-to-vsock /bin/ip-to-vsock
 COPY ./packages/guest-agent/entrypoint.sh /entrypoint.sh
 CMD ["/entrypoint.sh"] 
