@@ -1,0 +1,2 @@
+export const VCR_SNAPSHOT_BUILDER_IMAGE = 'ghcr.io/zippiehq/vcr-snapshot-builder@sha256:5e5c42c5c559e3f64becdf98250c06efcdb1e7a79e04ddfbcb1f88c44eff1d6d';
+export const GUEST_AGENT_IMAGE = 'ghcr.io/zippiehq/vcr-guest-agent@sha256:487958ab9389f1288fa9122091aae4fa646863f5c755486c4a3aa887d69357cf'; 

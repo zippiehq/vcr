@@ -5,6 +5,7 @@ import { homedir } from 'os';
 import { getPathHash, getComposeCacheDirectory } from './cli';
 import { sshDebugKey, sshDebugKeyPub } from './keys';
 import { createHash } from 'crypto';
+import { VCR_SNAPSHOT_BUILDER_IMAGE, GUEST_AGENT_IMAGE } from './constants';
 
 function getCacheDirectory(ociTarPath?: string): string {
   const pathHash = getPathHash();
@@ -55,7 +56,7 @@ export function generateLinuxKitYaml(imageTag: string, profile: string, cacheDir
   const imageReference = imageTag;
   
   // Guest agent image - use parameter if provided, otherwise fall back to environment variable or default
-  const finalGuestAgentImage = guestAgentImage || process.env.CUSTOM_GUEST_AGENT_IMAGE || 'ghcr.io/zippiehq/vcr-guest-agent:latest';
+  const finalGuestAgentImage = guestAgentImage || process.env.CUSTOM_GUEST_AGENT_IMAGE || GUEST_AGENT_IMAGE;
   
   // Build onboot section conditionally
   let onboot = '';
@@ -160,7 +161,7 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
     const debugSuffix = includeDebugTools ? '-debug' : '-release';
     
     isolatedServiceConfig = {
-      image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
+      image: VCR_SNAPSHOT_BUILDER_IMAGE,
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],
@@ -220,7 +221,7 @@ export function generateDockerCompose(imageTag: string, profile: string, ociTarP
     const debugSuffix = includeDebugTools ? '-debug' : '-release';
     
     isolatedServiceConfig = {
-      image: 'ghcr.io/zippiehq/vcr-snapshot-builder',
+      image: VCR_SNAPSHOT_BUILDER_IMAGE,
       container_name: `${pathHash}-vcr-isolated-service`,
       hostname: 'vcr-isolated-service',
       networks: ['internal_net'],

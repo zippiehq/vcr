@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync, readdirSync, writeFileSync, unlinkS
 import { createHash } from 'crypto';
 import { cwd } from 'process';
 import { tmpdir } from 'os';
+import { VCR_SNAPSHOT_BUILDER_IMAGE } from './constants';
 
 interface TarContextOptions {
   contextPath?: string;
@@ -296,7 +297,7 @@ export class TarContextBuilder {
       '-v', `${this.contextPath}:/context:ro`,
       '-v', `${dockerTempDir}:/tmp`,
       '-w', '/context',
-      'ghcr.io/zippiehq/vcr-snapshot-builder',
+      VCR_SNAPSHOT_BUILDER_IMAGE,
       'tar', ...tarArgs
     ].join(' ');
     

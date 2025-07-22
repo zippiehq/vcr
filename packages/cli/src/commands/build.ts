@@ -28,6 +28,7 @@ import { TarContextBuilder } from '../tar-context';
 
 // Import help function
 import { showCommandHelp } from './help';
+import { VCR_SNAPSHOT_BUILDER_IMAGE } from '../constants';
 
 // Function to detect current profile from running containers
 function detectCurrentProfile(): string | null {
@@ -396,7 +397,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   }
   
   const currentDir = cwd();
-  const imageName = process.env.LINUXKIT_IMAGE || 'ghcr.io/zippiehq/vcr-snapshot-builder:latest';
+  const imageName = process.env.LINUXKIT_IMAGE || VCR_SNAPSHOT_BUILDER_IMAGE;
   
   // Get current user UID/GID for Docker commands
   const uid = process.getuid?.() ?? 0;
@@ -505,7 +506,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
         '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
         '-w', '/cache',
-        'ghcr.io/zippiehq/vcr-snapshot-builder',
+        VCR_SNAPSHOT_BUILDER_IMAGE,
         'bash', '-c',
         `rm -f /cache/vc${debugSuffix}.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs - /cache/vc${debugSuffix}.squashfs -tar -noI -noId -noD -noF -noX -reproducible < /cache/vc${debugSuffix}.tar > /dev/null 2>&1 && cp /usr/share/qemu/images/linux-riscv64-Image /cache/vc${debugSuffix}.qemu-kernel && rm /cache/vc${debugSuffix}.tar`
       ];
@@ -546,7 +547,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
             '-v', `${currentDir}:/work`,
             '-v', `${cacheDir}:/cache`,
             '-w', '/cache',
-            'ghcr.io/zippiehq/vcr-snapshot-builder',
+            VCR_SNAPSHOT_BUILDER_IMAGE,
             'bash', '-c',
             `rm -rf /cache/vc-cm-snapshot${debugSuffix} && cartesi-machine --ram-length=1024Mi --flash-drive="label:root,filename:/cache/vc${debugSuffix}.squashfs" --append-bootargs="loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro" --max-mcycle=0 --store=/cache/vc-cm-snapshot${debugSuffix}`
           ];
@@ -602,7 +603,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-v', `${currentDir}:/work`,
           '-v', `${cacheDir}:/cache`,
           '-w', '/cache',
-          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          VCR_SNAPSHOT_BUILDER_IMAGE,
           'bash', '-c',
           `rm -f /cache/vc-cm-snapshot${debugSuffix}.squashfs && SOURCE_DATE_EPOCH=0 mksquashfs /cache/vc-cm-snapshot${debugSuffix} /cache/vc-cm-snapshot${debugSuffix}.squashfs -comp zstd -reproducible > /dev/null 2>&1`
         ];
@@ -672,7 +673,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-v', `${currentDir}:/work`,
           '-v', `${cacheDir}:/cache`,
           '-w', '/cache',
-          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          VCR_SNAPSHOT_BUILDER_IMAGE,
           'bash', '-c',
           `rm -f /cache/vc-cm-snapshot${debugSuffix}.squashfs.verity && veritysetup --root-hash-file /cache/vc-cm-snapshot${debugSuffix}.squashfs.root-hash --hash-offset=${fileSize} --salt=${salt} --uuid=${deterministicUuid} format /cache/vc-cm-snapshot${debugSuffix}.squashfs /cache/vc-cm-snapshot${debugSuffix}.squashfs`
         ];
@@ -697,7 +698,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-v', `${currentDir}:/work`,
           '-v', `${cacheDir}:/cache`,
           '-w', '/cache',
-          'ghcr.io/zippiehq/vcr-snapshot-builder',
+          VCR_SNAPSHOT_BUILDER_IMAGE,
           'bash', '-c',
           `veritysetup verify --root-hash-file=/cache/vc-cm-snapshot${debugSuffix}.squashfs.root-hash --hash-offset=${fileSize} /cache/vc-cm-snapshot${debugSuffix}.squashfs /cache/vc-cm-snapshot${debugSuffix}.squashfs`
         ];
@@ -1205,7 +1206,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
     
     // Start file watcher for stage/prod profiles with hot reload
     if (hot && (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug')) {
-      startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false, hot);
+      startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, false, hot, useExistingImage);
     }
     
     // For dev profile with hot reload, check if image supports in-container file watching
@@ -1220,7 +1221,7 @@ export function runDevEnvironment(imageTag: string, profile: string, cacheDir?: 
         console.log(`⏹️  Press Ctrl+C to stop watching and exit\n`);
         
         // Start file watcher for dev profile when image doesn't support in-container watching
-        startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, true, hot);
+        startFileWatcher(imageTag, profile, cacheDir, useDepot, useTarContext, forceDockerTar, turbo, guestAgentImage, true, hot, useExistingImage);
       }
     }
     
