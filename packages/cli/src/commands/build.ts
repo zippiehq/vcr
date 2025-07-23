@@ -794,6 +794,20 @@ export function buildImage(imageTag: string, profile: string, userCacheDir?: str
     // For stage/prod profiles, we'll use the image reference directly in LinuxKit YAML
     if (profile === 'stage' || profile === 'stage-release' || profile === 'prod' || profile === 'prod-debug') {
       console.log('✅ Using existing image for stage/prod profile - will reference directly in LinuxKit YAML');
+      
+      // Get cache directory based on image tag, profile, and guest-agent image
+      const cacheDir = getCacheDirectory(imageTag, profile, guestAgentImage);
+      
+      // Create cache directory if it doesn't exist
+      if (!existsSync(cacheDir)) {
+        mkdirSync(cacheDir, { recursive: true });
+      }
+      
+      // Build LinuxKit image with direct image reference
+      console.log(`\n🔄 Building LinuxKit image for ${profile} profile...`);
+      const yamlPath = generateLinuxKitYaml(imageTag, profile, cacheDir, undefined, guestAgentImage);
+      buildLinuxKitImage(yamlPath, profile, undefined, cacheDir, forceRebuild);
+      
       return undefined; // No OCI tar needed
     }
     
