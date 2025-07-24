@@ -20,3 +20,7 @@ yarn-error.log*
 *~ 
 
 target/
+
+# Added by cargo
+
+/target
