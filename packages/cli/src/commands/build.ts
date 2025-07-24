@@ -403,9 +403,18 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   const uid = process.getuid?.() ?? 0;
   const gid = process.getgid?.() ?? 0;
   
+  // Check if Docker config exists for authentication
+  const dockerConfigPath = join(homedir(), '.docker', 'config.json');
+  const dockerConfigMount = existsSync(dockerConfigPath) ? ['-v', `${dockerConfigPath}:/cache/.docker/config.json:ro`] : [];
+  
   console.log(`Using snapshot-builder image: ${imageName}`);
   console.log(`Working directory: ${currentDir}`);
   console.log(`Cache directory: ${cacheDir}`);
+  if (existsSync(dockerConfigPath)) {
+    console.log(`Docker config found: ${dockerConfigPath}`);
+  } else {
+    console.log(`No Docker config found at ${dockerConfigPath} - authentication may not work for private registries`);
+  }
   
   // Determine if debug tools should be included for this profile
   const includeDebugTools = profile === 'dev' || profile === 'stage' || profile === 'prod-debug';
@@ -453,6 +462,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
           '-v', `${currentDir}:/work`,
           '-v', `${cacheDir}:/cache`,
           '-v', `${linuxkitCacheDir}:/home/user/.linuxkit/cache`,
+          ...dockerConfigMount,
           '-w', '/cache',
           imageName,
           '/usr/local/bin/linuxkit', 'cache', 'import', containerOciTarPath
@@ -473,6 +483,7 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
         '-v', `${currentDir}:/work`,
         '-v', `${cacheDir}:/cache`,
         '-v', `${linuxkitCacheDir}:/home/user/.linuxkit/cache`,
+        ...dockerConfigMount,
         ...(cacheDir ? ['-v', `${cacheDir}/.moby:/.moby`] : []),
         '-v', '/var/run/docker.sock:/var/run/docker.sock',
         '-w', '/cache',
