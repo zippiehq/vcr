@@ -1,0 +1,15 @@
+[package]
+name = "cartesi-nbd-server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1.56"
+byteorder = "1.4.3"
+
+[dev-dependencies]
+cartesi-machine = { git = "https://github.com/zippiehq/cm-rust-bindings", rev = "b6b245e5df16a7f9e4e2ff33c5eaad90778d7cfb", features = ["download_uarch"] }
+tempfile = "3.2.0"
