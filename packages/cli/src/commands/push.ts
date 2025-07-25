@@ -371,6 +371,7 @@ export function handlePushCommand(args: string[]): void {
       '--sbom=false',
       '--build-arg', 'SOURCE_DATE_EPOCH=1752444000',
       '--output', `type=registry,name=${resolvedRegistryPath}`,
+      '--metadata-file', join(cacheDir, 'build-metadata.json')
     ];
     
     // Use tar file via stdin if available, otherwise use directory
@@ -392,6 +393,7 @@ export function handlePushCommand(args: string[]): void {
       '--sbom=false',
       '--build-arg', 'SOURCE_DATE_EPOCH=1752444000',
       '--output', `type=registry,name=${resolvedRegistryPath}`,
+      '--metadata-file', join(cacheDir, 'build-metadata.json')
     ];
     
     // Use tar file via stdin if available, otherwise use directory
@@ -428,32 +430,56 @@ export function handlePushCommand(args: string[]): void {
         env: { ...process.env, SOURCE_DATE_EPOCH: sourceDateEpoch }
       });
     }
-            console.log(`\n✅ Build and push completed successfully!`);
-        console.log(`📤 Successfully pushed to: ${resolvedRegistryPath}`);
+    
+    // Get digest from metadata file
+    let digest = '';
+    try {
+      const metadataPath = join(cacheDir, 'build-metadata.json');
+      if (existsSync(metadataPath)) {
+        const metadataContent = readFileSync(metadataPath, 'utf8');
+        const metadata = JSON.parse(metadataContent);
         
-        // Send notification if configured
-        if (resolved.config?.notify_url) {
-          try {
-            const notificationData = {
-              type: 'push',
-              registry_path: resolvedRegistryPath,
-              original_path: registryPath,
-              timestamp: new Date().toISOString(),
-              success: true,
-              profile: 'prod',
-              platforms: ['linux/riscv64']
-            };
-            
-            console.log(`📢 Sending notification to: ${resolved.config.notify_url}`);
-            const response = execSync(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify(notificationData)}' "${resolved.config.notify_url}"`, { 
-              encoding: 'utf8',
-              stdio: 'pipe'
-            });
-            console.log(`📢 Notification response: ${response.trim()}`);
-          } catch (err) {
-            console.warn(`⚠️  Failed to send notification: ${err}`);
-          }
+        // Extract digest from metadata
+        if (metadata.digest) {
+          digest = metadata.digest.replace('sha256:', '');
+          console.log(`🔐 Container digest: ${metadata.digest}`);
+        } else {
+          console.log(`⚠️  No digest found in metadata file`);
         }
+      } else {
+        console.log(`⚠️  Metadata file not found: ${metadataPath}`);
+      }
+    } catch (err) {
+      console.log(`⚠️  Could not read digest from metadata: ${err}`);
+    }
+    
+    console.log(`\n✅ Build and push completed successfully!`);
+    console.log(`📤 Successfully pushed to: ${resolvedRegistryPath}`);
+    
+    // Send notification if configured
+    if (resolved.config?.notify_url) {
+      try {
+        const notificationData = {
+          type: 'push',
+          registry_path: resolvedRegistryPath,
+          original_path: registryPath,
+          timestamp: new Date().toISOString(),
+          success: true,
+          profile: 'prod',
+          platforms: ['linux/riscv64'],
+          digest: digest ? `sha256:${digest}` : undefined
+        };
+        
+        console.log(`📢 Sending notification to: ${resolved.config.notify_url}`);
+        const response = execSync(`curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify(notificationData)}' "${resolved.config.notify_url}"`, { 
+          encoding: 'utf8',
+          stdio: 'pipe'
+        });
+        console.log(`📢 Notification response: ${response.trim()}`);
+      } catch (err) {
+        console.warn(`⚠️  Failed to send notification: ${err}`);
+      }
+    }
     
   } catch (err) {
     console.error('❌ Build failed, cannot push:', err);
@@ -471,4 +497,4 @@ export function handlePushCommand(args: string[]): void {
 
   console.log(`\n🎉 Successfully built and pushed RISC-V container to: ${registryPath}`);
   console.log(`📦 Build artifacts cached in: ${cacheDir || 'default cache directory'}`);
-} 
+}
