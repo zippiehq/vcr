@@ -11,6 +11,11 @@ env_logger = "0.10"
 colored = "2.1.0"
 vsock = "0.5.0"
 vsock-protocol = { path = "../vsock-protocol" }
+hyper = { version = "1.6.0" }
+hyper-util = { version = "0.1", features = ["tokio", "server", "http1"] }
+http-body-util = "0.1"
+bytes = "1"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
 
 [[bin]]
 name = "runner"
