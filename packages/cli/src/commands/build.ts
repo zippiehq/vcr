@@ -405,7 +405,29 @@ function buildLinuxKitImage(yamlPath: string, profile: string, ociTarPath?: stri
   
   // Check if Docker config exists for authentication
   const dockerConfigPath = join(homedir(), '.docker', 'config.json');
-  const dockerConfigMount = existsSync(dockerConfigPath) ? ['-v', `${dockerConfigPath}:/cache/.docker/config.json:ro`] : [];
+  let dockerConfigMount: string[] = [];
+  
+  if (existsSync(dockerConfigPath)) {
+    try {
+      const configContent = readFileSync(dockerConfigPath, 'utf8');
+      const config = JSON.parse(configContent);
+      
+      // Skip mounting if using Docker Desktop credential store
+      if (config.credsStore === 'desktop') {
+        console.log(`Docker config found but using 'desktop' credential store - skipping config mount (credentials in macOS keychain)`);
+      } else {
+        dockerConfigMount = ['-v', `${dockerConfigPath}:/cache/.docker/config.json:ro`];
+        console.log(`Docker config found: ${dockerConfigPath}`);
+      }
+    } catch (err) {
+      console.log(`⚠️  Could not parse Docker config: ${err}`);
+      // Fall back to mounting if we can't parse the config
+      dockerConfigMount = ['-v', `${dockerConfigPath}:/cache/.docker/config.json:ro`];
+      console.log(`Docker config found: ${dockerConfigPath}`);
+    }
+  } else {
+    console.log(`No Docker config found at ${dockerConfigPath} - authentication may not work for private registries`);
+  }
   
   console.log(`Using snapshot-builder image: ${imageName}`);
   console.log(`Working directory: ${currentDir}`);
