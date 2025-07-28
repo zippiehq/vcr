@@ -6,6 +6,7 @@ use std::io::Write;
 use std::path::Path;
 mod http_service;
 mod utils;
+use crate::utils::run_machine_loop;
 use crate::utils::{receive_packet, send_packet, vsock_connect};
 use bytes::Bytes;
 use http_body_util::BodyExt;
@@ -20,7 +21,6 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use vsock_protocol::{VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RW};
-
 /// The path to the machine snapshot.
 const MACHINE_PATH: &str = "../../vc-cm-snapshot-release";
 /// The port the guest machine is listening on.
@@ -101,8 +101,7 @@ async fn connect(port: u32) -> Result<(), Box<dyn Error>> {
     match TcpStream::connect(addr).await {
         Ok(mut stream) => {
             info!("TCP connection established to {}", addr);
-            let http_request =
-                "GET /data HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+            let http_request = "GET /data HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
             use tokio::io::AsyncWriteExt;
             if let Err(e) = stream.write(http_request.as_bytes()).await {
                 eprintln!("Write error: {}", e);
@@ -165,23 +164,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     info!("START RUNNER");
     info!("________________________________________________________");
 
-    info!("Starting HTTP server on port 8081...");
+    /*info!("Starting HTTP server on port 8081...");
     tokio::spawn(async {
         if let Err(e) = listen(8081).await {
             eprintln!("Listen failed: {}", e);
         }
-    });
+    });*/
     let mut machine = Machine::load(Path::new(MACHINE_PATH), &RuntimeConfig::default())?;
-    run_health_check(&mut machine).await;
+    run_machine_loop(&mut machine)?;
+
+    //run_health_check(&mut machine).await;
 
     //run_vsock_tcp_proxy(machine).await?;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    /*tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     info!("Testing connect function to port 8081...");
     if let Err(e) = connect(8081).await {
         eprintln!("Connect test failed: {}", e);
-    }
+    }*/
 
     Ok(())
 }
