@@ -1,6 +1,4 @@
-use crate::utils::{
-    receive_packet, run_machine_until_yield, send_empty_response, send_packet, vsock_connect,
-};
+use crate::utils::{receive_packet, run_machine_until_yield, send_empty_response, vsock_connect};
 use cartesi_machine::machine::Machine;
 use log::info;
 use std::error::Error;
@@ -34,12 +32,12 @@ impl<'a> HttpService<'a> {
         match method {
             "GET" | "POST" => {
                 info!("Sending HTTP request to guest...");
-                send_packet(
+                /*send_packet(
                     self.machine,
                     self.guest_port,
                     VSOCK_OP_RW,
                     request.as_bytes(),
-                )?;
+                )?;*/
 
                 info!("Waiting for response...");
                 run_machine_until_yield(self.machine)?;
