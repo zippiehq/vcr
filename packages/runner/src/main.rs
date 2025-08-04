@@ -6,8 +6,8 @@ use std::io::Write;
 use std::path::Path;
 mod http_service;
 mod utils;
-use crate::utils::{connect, listen, run_machine_loop};
-use crate::utils::{receive_packet, vsock_connect, RunnerState};
+use crate::utils::{connect, listen, run_machine_loop, RunnerState};
+use crate::utils::{receive_packet, vsock_connect};
 use bytes::Bytes;
 use http_body_util::BodyExt;
 use http_body_util::Full;
@@ -131,16 +131,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         &RuntimeConfig::default(),
     )?));
 
+    // Create a single shared state
+    let state = Arc::new(Mutex::new(RunnerState::new()));
+
     let machine_for_listen = Arc::clone(&machine);
     let machine_for_connect = Arc::clone(&machine);
+    let machine_for_loop = Arc::clone(&machine);
+    let state_for_listen = Arc::clone(&state);
+    let state_for_connect = Arc::clone(&state);
+    let state_for_loop = Arc::clone(&state);
 
     // Spawn both listen and connect concurrently
     let listen_fut = {
         let machine = machine_for_listen.clone();
+        let state = state_for_listen.clone();
         async move {
             info!("Running listen on port 8080...");
-            match listen(machine.clone(), 8080).await {
-                Ok(_) => info!("Listen completed successfully."),
+            match listen(machine.clone(), state.clone(), 8080).await {
+                Ok(_) => info!("Listen registered successfully."),
                 Err(e) => eprintln!("Listen failed: {}", e),
             }
         }
@@ -148,17 +156,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let connect_fut = {
         let machine = machine_for_connect.clone();
+        let state = state_for_connect.clone();
         async move {
             tokio::time::sleep(Duration::from_millis(1000)).await;
             info!("Running connect to port 8080...");
-            match connect(machine.clone(), 8080).await {
-                Ok(_) => info!("Connect completed successfully."),
+            match connect(machine.clone(), state.clone(), 8080).await {
+                Ok(_) => info!("Connect request registered successfully."),
                 Err(e) => eprintln!("Connect failed: {}", e),
             }
         }
     };
 
-    tokio::join!(listen_fut, connect_fut);
+    let machine_loop_fut = {
+        let machine = machine_for_loop.clone();
+        let state = state_for_loop.clone();
+        async move {
+            info!("Starting machine loop with shared state...");
+            match run_machine_loop(machine, state).await {
+                Ok(_) => info!("Machine loop completed."),
+                Err(e) => eprintln!("Machine loop failed: {}", e),
+            }
+        }
+    };
+
+    tokio::join!(listen_fut, connect_fut, machine_loop_fut);
 
     Ok(())
 }

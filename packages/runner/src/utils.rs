@@ -234,18 +234,20 @@ impl RunnerConnection {
     }
 }
 
-pub fn run_machine_loop(
-    machine: &mut Machine,
-    state: &mut RunnerState,
+pub async fn run_machine_loop(
+    machine: Arc<Mutex<Machine>>,
+    state: Arc<Mutex<RunnerState>>,
 ) -> Result<(), Box<dyn Error>> {
-    state.add_connection_request(8080);
     loop {
-        run_machine_until_yield(machine)?;
-        let packet = receive_packet(machine)?;
+        let mut machine = machine.lock().await;
+        let mut state = state.lock().await;
+
+        run_machine_until_yield(&mut machine)?;
+        let packet = receive_packet(&mut machine)?;
         info!("packet = {:?}", packet);
         if let Some(packet) = packet {
             state.add_to_read_queue(packet);
-            send_empty_response(machine)?;
+            send_empty_response(&mut machine)?;
         } else {
             // pop one packet from cmio_write_queue and set it as response
             if let Some(packet) = state.pop_from_write_queue() {
@@ -253,7 +255,7 @@ pub fn run_machine_loop(
                 machine.send_cmio_response(CmioResponseReason::Advance, &packet.to_bytes())?;
             } else {
                 info!("No packet to send to guest, sending empty response");
-                send_empty_response(machine)?;
+                send_empty_response(&mut machine)?;
             }
         }
 
@@ -289,20 +291,14 @@ pub fn run_machine_loop(
                     info!("Received response packet: {:?}", packet);
                     // handle response to a connection request
                     let dst_port = packet.hdr().dst_port;
-                    if let Some(connection_request) =
-                        state.get_connection_request(packet.hdr().src_port)
-                    {
-                        info!(
-                            "Found connection request for port: {:?}",
-                            connection_request.port
-                        );
-                        state.add_connection(connection_request.port);
-                        state.remove_connection_request(packet.hdr().src_port);
+                    let src_port = packet.hdr().src_port;
+                    if let Some(connection_request) = state.get_connection_request(src_port) {
+                        let port = connection_request.port;
+                        info!("Found connection request for port: {:?}", port);
+                        state.add_connection(port);
+                        state.remove_connection_request(src_port);
                     } else {
-                        error!(
-                            "No connection request found for port: {:?}",
-                            packet.hdr().src_port
-                        );
+                        error!("No connection request found for port: {:?}", src_port);
                         // If no connection request is found, send a reset (RST) packet
                         state.add_to_write_queue(construct_packet(dst_port, VSOCK_OP_RST, &[])?);
                     }
@@ -455,23 +451,26 @@ pub fn receive_packet(machine: &mut Machine) -> Result<Option<Packet>, Box<dyn E
     Ok(None)
 }
 
-pub async fn listen(machine: Arc<Mutex<Machine>>, port: u32) -> Result<(), Box<dyn Error>> {
+pub async fn listen(
+    machine: Arc<Mutex<Machine>>,
+    state: Arc<Mutex<RunnerState>>,
+    port: u32,
+) -> Result<(), Box<dyn Error>> {
     info!("Starting listener on port {}", port);
-
-    let mut state = RunnerState::new();
-
+    let mut state = state.lock().await;
     state.add_listener(port);
-    let mut machine = machine.lock().await;
-
-    run_machine_loop(&mut machine, &mut state)
+    info!("Listener registered for port {}", port);
+    Ok(())
 }
 
-pub async fn connect(machine: Arc<Mutex<Machine>>, port: u32) -> Result<(), Box<dyn Error>> {
+pub async fn connect(
+    machine: Arc<Mutex<Machine>>,
+    state: Arc<Mutex<RunnerState>>,
+    port: u32,
+) -> Result<(), Box<dyn Error>> {
     info!("Connecting to guest port {}", port);
-
-    let mut state = RunnerState::new();
+    let mut state = state.lock().await;
     state.add_connection_request(port);
-    let mut machine = machine.lock().await;
-
-    run_machine_loop(&mut machine, &mut state)
+    info!("Connection request registered for port {}", port);
+    Ok(())
 }
