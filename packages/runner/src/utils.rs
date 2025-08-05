@@ -15,10 +15,57 @@ const HOST_CID: u32 = 3;
 const HOST_PORT: u32 = 1025;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// Service trait for handling vsock connections
+pub trait Service: Send {
+    /// Called when a new connection is established
+    fn on_connection(&mut self, port: u32);
+    
+    /// Called when data is received on a connection
+    fn on_data(&mut self, port: u32, data: &[u8]);
+    
+    /// Called when a connection receives a reset
+    fn on_reset(&mut self, port: u32);
+    
+    /// Called when a connection receives a shutdown
+    fn on_shutdown(&mut self, port: u32);
+    
+    /// Called to get data to write to a connection
+    fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>>;
+    
+    /// Called to check if a connection should be shut down
+    fn should_shutdown(&mut self, port: u32) -> bool;
+}
+
+/// Client trait for making vsock connections
+pub trait Client: Send {
+    /// Called when a connection attempt succeeds
+    fn on_connect_success(&mut self, port: u32);
+    
+    /// Called when a connection attempt fails
+    fn on_connect_failed(&mut self, port: u32);
+    
+    /// Called when data is received on a connection
+    fn on_data(&mut self, port: u32, data: &[u8]);
+    
+    /// Called when a connection receives a reset
+    fn on_reset(&mut self, port: u32);
+    
+    /// Called when a connection receives a shutdown
+    fn on_shutdown(&mut self, port: u32);
+    
+    /// Called to get data to write to a connection
+    fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>>;
+    
+    /// Called to check if a connection should be shut down
+    fn should_shutdown(&mut self, port: u32) -> bool;
+}
+
 pub struct RunnerState {
-    listeners: HashMap<u32, RunnerListener>,
-    connections: HashMap<u32, RunnerConnection>,
-    connection_requests: HashMap<u32, RunnerConnectionRequest>,
+    listeners: HashMap<u32, Box<dyn Service>>,
+    clients: HashMap<u32, Box<dyn Client>>, // Maps client port to client instance
+    connection_service_map: HashMap<u32, u32>, // Maps connection port to service port
+    connection_client_map: HashMap<u32, u32>, // Maps connection port to client port
     cmio_write_queue: Vec<Packet>,
     cmio_read_queue: Vec<Packet>,
 }
@@ -27,64 +74,85 @@ impl RunnerState {
     pub fn new() -> Self {
         Self {
             listeners: HashMap::new(),
-            connections: HashMap::new(),
-            connection_requests: HashMap::new(),
+            clients: HashMap::new(),
+            connection_service_map: HashMap::new(),
+            connection_client_map: HashMap::new(),
             cmio_write_queue: Vec::new(),
             cmio_read_queue: Vec::new(),
         }
     }
 
-    pub fn add_listener(&mut self, port: u32) {
-        let listener = RunnerListener::new(port);
-        self.listeners.insert(port, listener);
+    pub fn add_listener(&mut self, port: u32, service: Box<dyn Service>) {
+        self.listeners.insert(port, service);
     }
 
     pub fn remove_listener(&mut self, port: u32) {
         self.listeners.remove(&port);
     }
 
-    pub fn get_listener(&self, port: u32) -> Option<&RunnerListener> {
-        self.listeners.get(&port)
+    pub fn get_listener(&mut self, port: u32) -> Option<&mut Box<dyn Service>> {
+        self.listeners.get_mut(&port)
+    }
+
+    // Client methods
+    pub fn add_client(&mut self, port: u32, client: Box<dyn Client>) {
+        self.clients.insert(port, client);
+    }
+
+    pub fn remove_client(&mut self, port: u32) {
+        self.clients.remove(&port);
+    }
+
+    pub fn get_client(&mut self, port: u32) -> Option<&mut Box<dyn Client>> {
+        self.clients.get_mut(&port)
+    }
+
+    pub fn initiate_connection(&mut self, client_port: u32, target_cid: u32, target_port: u32) -> Result<(), Box<dyn Error>> {
+        // Create a connection request packet
+        let packet = construct_packet(
+            target_port,
+            VSOCK_OP_REQUEST,
+            &[],
+        )?;
+        
+        // Add the packet to the write queue
+        self.add_to_write_queue(packet);
+        
+        // Map the connection to this client
+        // We'll use the target_port as the connection port for now
+        self.add_client_connection(target_port, client_port);
+        
+        info!("Initiated connection from client {} to {}:{}", client_port, target_cid, target_port);
+        Ok(())
     }
 
     // Connection methods
-    pub fn add_connection(&mut self, port: u32) {
-        let connection = RunnerConnection::new(port);
-        self.connections.insert(port, connection);
+    pub fn add_connection(&mut self, port: u32, service_port: u32) {
+        self.connection_service_map.insert(port, service_port);
+    }
+
+    pub fn add_client_connection(&mut self, port: u32, client_port: u32) {
+        self.connection_client_map.insert(port, client_port);
     }
 
     pub fn remove_connection(&mut self, port: u32) {
-        self.connections.remove(&port);
+        self.connection_service_map.remove(&port);
+        self.connection_client_map.remove(&port);
     }
 
-    pub fn get_connection(&mut self, port: u32) -> Option<&mut RunnerConnection> {
-        self.connections.get_mut(&port)
+    pub fn get_service_port(&self, connection_port: u32) -> Option<u32> {
+        self.connection_service_map.get(&connection_port).copied()
     }
 
-    pub fn get_connections_mut(&mut self) -> &mut HashMap<u32, RunnerConnection> {
-        &mut self.connections
+    pub fn get_client_port(&self, connection_port: u32) -> Option<u32> {
+        self.connection_client_map.get(&connection_port).copied()
     }
 
-    pub fn get_connections(&mut self) -> &mut HashMap<u32, RunnerConnection> {
-        &mut self.connections
-    }
-
-    pub fn get_connection_requests(&mut self) -> &mut HashMap<u32, RunnerConnectionRequest> {
-        &mut self.connection_requests
-    }
-
-    // Connection request methods
-    pub fn add_connection_request(&mut self, port: u32) {
-        let connection_request = RunnerConnectionRequest::new(port);
-        self.connection_requests.insert(port, connection_request);
-    }
-
-    pub fn remove_connection_request(&mut self, port: u32) {
-        self.connection_requests.remove(&port);
-    }
-
-    pub fn get_connection_request(&self, port: u32) -> Option<&RunnerConnectionRequest> {
-        self.connection_requests.get(&port)
+    pub fn get_connection_ports(&self) -> Vec<u32> {
+        let mut ports = Vec::new();
+        ports.extend(self.connection_service_map.keys().copied());
+        ports.extend(self.connection_client_map.keys().copied());
+        ports
     }
 
     // CMIO queue methods
@@ -129,110 +197,12 @@ pub fn construct_packet(
     Ok(packet)
 }
 
-pub fn vsock_connect(machine: &mut Machine, guest_port: u32) -> Result<(), Box<dyn Error>> {
-    info!(
-        "Attempting to connect to guest vsock port {}...",
-        guest_port
-    );
-    run_machine_until_yield(machine)?;
-    loop {
-        run_machine_until_yield(machine)?;
-        info!("Machine cycle = {}", machine.mcycle().unwrap());
-        match receive_packet(machine)? {
-            Some(packet) => {
-                if packet.hdr().op == VSOCK_OP_RESPONSE {
-                    info!("Vsock connection established!");
-                    return Ok(());
-                } else if packet.hdr().op == VSOCK_OP_RST {
-                    info!("Connection reset by peer, retrying...");
-                } else {
-                    info!("Unsuccessful connection attempt, aborting.");
-                    return Err("Failed to connect".into());
-                }
-            }
-            None => {
-                info!("No packet received in response to connection request, looping around.");
-                //                return Err("Connection timeout".into());
-            }
-        }
-        send_empty_response(machine)?;
-    }
-}
 
-#[derive(Clone)]
-struct RunnerListener {
-    port: u32,
-}
 
-impl RunnerListener {
-    fn new(port: u32) -> Self {
-        Self { port }
-    }
 
-    fn new_connection(&self, connection: RunnerConnection) {
-        info!(
-            "Listener on port {} received new connection from port {}",
-            self.port, connection.port
-        );
-        // In a real implementation, this might notify a callback or store the connection
-    }
-}
 
-#[derive(Clone)]
-struct RunnerConnectionRequest {
-    port: u32,
-    open_requested: bool,
-}
 
-impl RunnerConnectionRequest {
-    fn new(port: u32) -> Self {
-        Self {
-            port,
-            open_requested: false,
-        }
-    }
 
-    fn connection_successful(&self, connections: &mut HashMap<u32, RunnerConnection>) {
-        info!("Connection request for port {} was successful", self.port);
-        let connection = RunnerConnection::new(self.port);
-        connections.insert(self.port, connection.clone());
-    }
-
-    fn reset_received(&self) {
-        info!("Connection request for port {} received reset", self.port);
-        // In a real implementation, this might notify a callback or update state
-    }
-}
-
-#[derive(Clone)]
-struct RunnerConnection {
-    port: u32,
-    read_queue: Vec<Vec<u8>>,
-    write_queue: Vec<Vec<u8>>,
-}
-
-impl RunnerConnection {
-    fn new(port: u32) -> Self {
-        Self {
-            port,
-            read_queue: Vec::new(),
-            write_queue: Vec::new(),
-        }
-    }
-
-    fn reset_received(&mut self) {
-        info!("Connection on port {} received reset", self.port);
-        self.read_queue.clear();
-        self.write_queue.clear();
-    }
-
-    fn shutdown_received(&mut self) {
-        info!("Connection on port {} received shutdown", self.port);
-        // In a real implementation, this might close the connection or notify callbacks
-        self.read_queue.clear();
-        self.write_queue.clear();
-    }
-}
 
 pub async fn run_machine_loop(
     machine: Arc<Mutex<Machine>>,
@@ -264,23 +234,17 @@ pub async fn run_machine_loop(
             match packet.hdr().op {
                 VSOCK_OP_REQUEST => {
                     info!("Received request packet: {:?}", packet);
-                    // Listener scenario
-                    // Do we have a listener for this port?
-                    // If so, send a response packet
-                    // If not, send a reset packet
                     let dst_port = packet.hdr().dst_port;
                     let src_port = packet.hdr().src_port;
-                    if state.get_listener(dst_port).is_some() {
+                    if let Some(service) = state.get_listener(dst_port) {
                         info!("Found listener for port: {:?}", dst_port);
                         state.add_to_write_queue(construct_packet(
                             dst_port,
                             VSOCK_OP_RESPONSE,
                             &[],
                         )?);
-                        state.add_connection(src_port);
-                        if let Some(listener) = state.get_listener(dst_port) {
-                            listener.new_connection(RunnerConnection::new(src_port));
-                        }
+                        state.add_connection(src_port, dst_port);
+                        service.on_connection(src_port);
                     } else {
                         info!("No listener found for port: {:?}", dst_port);
                         // If no listener is found for the requested port, send a reset (RST) packet
@@ -289,64 +253,64 @@ pub async fn run_machine_loop(
                 }
                 VSOCK_OP_RESPONSE => {
                     info!("Received response packet: {:?}", packet);
-                    // handle response to a connection request
                     let dst_port = packet.hdr().dst_port;
                     let src_port = packet.hdr().src_port;
-                    if let Some(connection_request) = state.get_connection_request(src_port) {
-                        let port = connection_request.port;
-                        info!("Found connection request for port: {:?}", port);
-                        state.add_connection(port);
-                        state.remove_connection_request(src_port);
-                    } else {
-                        error!("No connection request found for port: {:?}", src_port);
-                        // If no connection request is found, send a reset (RST) packet
-                        state.add_to_write_queue(construct_packet(dst_port, VSOCK_OP_RST, &[])?);
+                    
+                    // Check if this is a response to a client connection attempt
+                    if let Some(client_port) = state.get_client_port(src_port) {
+                        if let Some(client) = state.get_client(client_port) {
+                            info!("Client connection successful on port {}", src_port);
+                            client.on_connect_success(src_port);
+                        }
                     }
-                    // Connection scenario
                 }
                 VSOCK_OP_RST => {
                     info!("Received reset packet: {:?}", packet);
-                    // Reset scenario
-                    // is it an ongoing connection or an established connection?
-                    let connection = state.get_connection(packet.hdr().src_port);
-                    if let Some(connection) = connection {
-                        info!("Found connection for port: {:?}", connection.port);
-                        // let connection know that a reset was received
-                        connection.reset_received();
-                    } else {
-                        // send connection request reset to connection requester
-                        if let Some(connection_request) =
-                            state.get_connection_request(packet.hdr().src_port)
-                        {
-                            info!(
-                                "Found connection request for port: {:?}",
-                                connection_request.port
-                            );
-                            connection_request.reset_received();
-                        } else {
-                            error!(
-                                "No connection request found for port: {:?}, ignoring reset",
-                                packet.hdr().src_port
-                            );
+                    let src_port = packet.hdr().src_port;
+                    if let Some(service_port) = state.get_service_port(src_port) {
+                        info!("Found service connection for port: {:?}", src_port);
+                        if let Some(service) = state.get_listener(service_port) {
+                            service.on_reset(src_port);
                         }
+                    } else if let Some(client_port) = state.get_client_port(src_port) {
+                        info!("Found client connection for port: {:?}", src_port);
+                        if let Some(client) = state.get_client(client_port) {
+                            client.on_reset(src_port);
+                        }
+                    } else {
+                        info!("No connection found for port: {:?}, ignoring reset", src_port);
                     }
                 }
                 VSOCK_OP_RW => {
                     info!("Received rw packet: {:?}", packet);
-                    let connection = state.get_connection(packet.hdr().src_port);
-                    if let Some(connection) = connection {
-                        connection.read_queue.push(packet.payload().to_vec());
+                    let src_port = packet.hdr().src_port;
+                    if let Some(service_port) = state.get_service_port(src_port) {
+                        // Find the service for this connection using the service_port
+                        if let Some(service) = state.get_listener(service_port) {
+                            service.on_data(src_port, packet.payload());
+                        }
+                    } else if let Some(client_port) = state.get_client_port(src_port) {
+                        // Find the client for this connection using the client_port
+                        if let Some(client) = state.get_client(client_port) {
+                            client.on_data(src_port, packet.payload());
+                        }
                     } else {
-                        info!("No connection found for port: {:?}", packet.hdr().src_port);
+                        info!("No connection found for port: {:?}", src_port);
                     }
                 }
                 VSOCK_OP_SHUTDOWN => {
                     info!("Received shutdown packet: {:?}", packet);
-                    let connection = state.get_connection(packet.hdr().src_port);
-                    if let Some(connection) = connection {
-                        connection.shutdown_received();
+                    let src_port = packet.hdr().src_port;
+                    if let Some(service_port) = state.get_service_port(src_port) {
+                        if let Some(service) = state.get_listener(service_port) {
+                            service.on_shutdown(src_port);
+                        }
+                    } else if let Some(client_port) = state.get_client_port(src_port) {
+                        if let Some(client) = state.get_client(client_port) {
+                            client.on_shutdown(src_port);
+                        }
                     } else {
-                        info!("No connection found for port: {:?}", packet.hdr().src_port);
+                        info!("No connection found for port: {:?}", src_port);
                     }
                 }
                 _ => {
@@ -356,32 +320,55 @@ pub async fn run_machine_loop(
         }
         // walk through all connections and send any pending data
 
-        let connections = state.get_connections();
+        let connection_ports = state.get_connection_ports();
         let mut packets_to_send = Vec::new();
-        for (_, connection) in connections.iter_mut() {
-            if !connection.write_queue.is_empty() {
-                // XXX we make an assumption no packets are transmitted in response for now
-                let packet = construct_packet(
-                    connection.port,
-                    VSOCK_OP_RW,
-                    &connection.write_queue.pop().unwrap(),
-                )?;
-                packets_to_send.push(packet);
+        for port in connection_ports {
+            // Check if service wants to write data
+            if let Some(service_port) = state.get_service_port(port) {
+                if let Some(service) = state.get_listener(service_port) {
+                    if let Some(data) = service.get_write_data(port) {
+                        let packet = construct_packet(
+                            port,
+                            VSOCK_OP_RW,
+                            &data,
+                        )?;
+                        packets_to_send.push(packet);
+                    }
+                    
+                    // Check if service wants to shutdown the connection
+                    if service.should_shutdown(port) {
+                        let packet = construct_packet(
+                            port,
+                            VSOCK_OP_SHUTDOWN,
+                            &[],
+                        )?;
+                        packets_to_send.push(packet);
+                    }
+                }
             }
-        }
-        for packet in packets_to_send {
-            state.add_to_write_queue(packet);
-        }
-
-        // walk through all connection requests and open with VSOCK_OP_REQUEST if not done already
-        let connection_requests = state.get_connection_requests();
-        let mut packets_to_send = Vec::new();
-        for (_, connection_request) in connection_requests.iter_mut() {
-            info!("Connection request for port: {:?}", connection_request.port);
-            if !connection_request.open_requested {
-                let packet = construct_packet(connection_request.port, VSOCK_OP_REQUEST, &[])?;
-                packets_to_send.push(packet);
-                connection_request.open_requested = true;
+            
+            // Check if client wants to write data
+            if let Some(client_port) = state.get_client_port(port) {
+                if let Some(client) = state.get_client(client_port) {
+                    if let Some(data) = client.get_write_data(port) {
+                        let packet = construct_packet(
+                            port,
+                            VSOCK_OP_RW,
+                            &data,
+                        )?;
+                        packets_to_send.push(packet);
+                    }
+                    
+                    // Check if client wants to shutdown the connection
+                    if client.should_shutdown(port) {
+                        let packet = construct_packet(
+                            port,
+                            VSOCK_OP_SHUTDOWN,
+                            &[],
+                        )?;
+                        packets_to_send.push(packet);
+                    }
+                }
             }
         }
         for packet in packets_to_send {
@@ -451,26 +438,3 @@ pub fn receive_packet(machine: &mut Machine) -> Result<Option<Packet>, Box<dyn E
     Ok(None)
 }
 
-pub async fn listen(
-    machine: Arc<Mutex<Machine>>,
-    state: Arc<Mutex<RunnerState>>,
-    port: u32,
-) -> Result<(), Box<dyn Error>> {
-    info!("Starting listener on port {}", port);
-    let mut state = state.lock().await;
-    state.add_listener(port);
-    info!("Listener registered for port {}", port);
-    Ok(())
-}
-
-pub async fn connect(
-    machine: Arc<Mutex<Machine>>,
-    state: Arc<Mutex<RunnerState>>,
-    port: u32,
-) -> Result<(), Box<dyn Error>> {
-    info!("Connecting to guest port {}", port);
-    let mut state = state.lock().await;
-    state.add_connection_request(port);
-    info!("Connection request registered for port {}", port);
-    Ok(())
-}
