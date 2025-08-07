@@ -37,7 +37,7 @@ impl HttpServer {
         }
     }
 
-    fn handle_http_request(&mut self, data: &[u8]) -> Option<Vec<u8>> {
+    pub fn handle_http_request(&mut self, data: &[u8]) -> Option<Vec<u8>> {
         // Simple HTTP request parsing
         let request_str = String::from_utf8_lossy(data);
         let lines: Vec<&str> = request_str.lines().collect();
