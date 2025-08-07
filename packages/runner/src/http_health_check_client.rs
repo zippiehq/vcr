@@ -50,9 +50,9 @@ impl Client for HttpHealthCheckClient {
         self.http_client.on_data(port, data);
         
         // Check if we have a complete response and handle health check logic
-        if let Some(connection) = self.http_client.connections.get(&port) {
-            if connection.response_complete {
-                if let Some((status_code, body)) = self.http_client.parse_http_response(&connection.buffer) {
+        if let Some(connection) = self.http_client.get_connection(&port) {
+            if connection.is_response_complete() {
+                if let Some((status_code, body)) = self.http_client.parse_http_response(connection.get_buffer()) {
                     info!("Health check client received status {}: {}", status_code, body);
                     
                     if status_code == 200 {
@@ -66,9 +66,9 @@ impl Client for HttpHealthCheckClient {
                             info!("Retrying health check (attempt {}/{})", 
                                   self.health_check_retries + 1, self.max_retries);
                             // Reset connection for retry
-                            if let Some(conn) = self.http_client.connections.get_mut(&port) {
-                                conn.response_complete = false;
-                                conn.buffer.clear();
+                            if let Some(conn) = self.http_client.get_mut_connection(&port) {
+                                conn.set_response_complete(false);
+                                conn.clear_buffer();
                             }
                             self.http_client.make_request(port, "GET", "/health", &self.target_host);
                         } else {
@@ -96,9 +96,9 @@ impl Client for HttpHealthCheckClient {
 
     fn should_shutdown(&mut self, port: u32) -> bool {
         // Shutdown after receiving successful response or max retries
-        if let Some(connection) = self.http_client.connections.get(&port) {
-            if connection.response_complete {
-                if let Some((status_code, _)) = self.http_client.parse_http_response(&connection.buffer) {
+        if let Some(connection) = self.http_client.get_connection(&port) {
+            if connection.is_response_complete() {
+                if let Some((status_code, _)) = self.http_client.parse_http_response(connection.get_buffer()) {
                     return status_code == 200 || self.health_check_retries >= self.max_retries;
                 }
             }

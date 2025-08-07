@@ -85,19 +85,41 @@ impl Service for HttpServer {
     fn on_data(&mut self, port: u32, data: &[u8]) {
         info!("HTTP server received {} bytes on port {}", data.len(), port);
         
-        if let Some(connection) = self.connections.get_mut(&port) {
-            connection.buffer.extend_from_slice(data);
+        // Check if we need to process this data
+        let should_process = {
+            if let Some(connection) = self.connections.get(&port) {
+                let buffer_str = String::from_utf8_lossy(&connection.buffer);
+                buffer_str.contains("\r\n\r\n") && !connection.request_complete
+            } else {
+                false
+            }
+        };
+        
+        if should_process {
+            // Get buffer data
+            let buffer_data = {
+                if let Some(connection) = self.connections.get(&port) {
+                    connection.buffer.clone()
+                } else {
+                    return;
+                }
+            };
             
-            // Check if we have a complete HTTP request
-            let buffer_str = String::from_utf8_lossy(&connection.buffer);
-            if buffer_str.contains("\r\n\r\n") && !connection.request_complete {
+            // Process request
+            let response = self.handle_http_request(&buffer_data);
+            
+            // Update connection
+            if let Some(connection) = self.connections.get_mut(&port) {
                 connection.request_complete = true;
-                
-                // Generate HTTP response
-                if let Some(response) = self.handle_http_request(&connection.buffer) {
-                    self.pending_responses.insert(port, response);
+                if let Some(response_data) = response {
+                    self.pending_responses.insert(port, response_data);
                     connection.response_ready = true;
                 }
+            }
+        } else {
+            // Add data to buffer
+            if let Some(connection) = self.connections.get_mut(&port) {
+                connection.buffer.extend_from_slice(data);
             }
         }
     }

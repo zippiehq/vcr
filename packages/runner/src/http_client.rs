@@ -10,7 +10,17 @@ pub struct HttpClient {
     responses: HashMap<u32, Vec<u8>>,
 }
 
-struct HttpClientConnection {
+impl HttpClient {
+    pub fn get_connection(&self, port: &u32) -> Option<&HttpClientConnection> {
+        self.connections.get(port)
+    }
+
+    pub fn get_mut_connection(&mut self, port: &u32) -> Option<&mut HttpClientConnection> {
+        self.connections.get_mut(port)
+    }
+}
+
+pub struct HttpClientConnection {
     port: u32,
     buffer: Vec<u8>,
     response_complete: bool,
@@ -23,6 +33,20 @@ impl HttpClientConnection {
             buffer: Vec::new(),
             response_complete: false,
         }
+    }
+    pub fn is_response_complete(&self) -> bool {
+        self.response_complete
+    }
+
+    pub fn set_response_complete(&mut self, response_complete: bool) {
+        self.response_complete = response_complete;
+    }
+
+    pub fn get_buffer(&self) -> &[u8] {
+        &self.buffer
+    }
+    pub fn clear_buffer(&mut self) {
+        self.buffer.clear();
     }
 }
 
@@ -100,8 +124,9 @@ impl Client for HttpClient {
                 self.responses.insert(port, connection.buffer.clone());
                 info!("HTTP client received complete response on port {}", port);
                 
-                // Parse and log the response
-                if let Some((status_code, body)) = self.parse_http_response(&connection.buffer) {
+                // Parse and log the response - clone buffer to avoid borrowing issues
+                let buffer_clone = connection.buffer.clone();
+                if let Some((status_code, body)) = self.parse_http_response(&buffer_clone) {
                     info!("HTTP client received status {}: {}", status_code, body);
                 }
             }

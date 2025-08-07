@@ -2,7 +2,7 @@ use cartesi_machine::machine::Machine;
 use cartesi_machine::types::cmio::{
     AutomaticReason, CmioRequest, CmioResponseReason, ManualReason,
 };
-use log::{error, info};
+use log::info;
 use std::collections::HashMap;
 use std::error::Error;
 use vsock_protocol::{
@@ -236,7 +236,8 @@ pub async fn run_machine_loop(
                     info!("Received request packet: {:?}", packet);
                     let dst_port = packet.hdr().dst_port;
                     let src_port = packet.hdr().src_port;
-                    if let Some(service) = state.get_listener(dst_port) {
+                                        
+                    if state.get_listener(dst_port).is_some() {
                         info!("Found listener for port: {:?}", dst_port);
                         state.add_to_write_queue(construct_packet(
                             dst_port,
@@ -244,7 +245,11 @@ pub async fn run_machine_loop(
                             &[],
                         )?);
                         state.add_connection(src_port, dst_port);
-                        service.on_connection(src_port);
+                        
+                        // Now call the service
+                        if let Some(service) = state.get_listener(dst_port) {
+                            service.on_connection(src_port);
+                        }
                     } else {
                         info!("No listener found for port: {:?}", dst_port);
                         // If no listener is found for the requested port, send a reset (RST) packet
