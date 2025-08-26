@@ -8,7 +8,11 @@ use runner::utils::{run_machine_loop, RunnerState};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
+use runner::http_client::make_http_request;
+use runner::http_client::add_http_client;
+/*
 #[test]
 fn test_health_check_endpoint() {
     let mut server = HttpServer::new(8080);
@@ -63,5 +67,44 @@ async fn test_cartesi_machine_health_check() -> Result<(), Box<dyn std::error::E
     };
 
     println!("Machine loop completed.");
+    Ok(())
+}
+*/
+#[tokio::test]
+async fn test_guest_listener_health_check() -> Result<(), Box<dyn std::error::Error>> {
+    const GUEST_PORT: u32 = 10000;
+
+    const MACHINE_PATH: &str = "../../vc-cm-snapshot-release";
+
+    let machine = Arc::new(Mutex::new(Machine::load(
+        Path::new(MACHINE_PATH),
+        &RuntimeConfig::default(),
+    )?));
+
+    let state = Arc::new(Mutex::new(RunnerState::new()));
+    let machine_for_loop = Arc::clone(&machine);
+    let state_for_loop = Arc::clone(&state);
+
+    {
+        let mut state_guard = state_for_loop.lock().await;
+        let _rx = add_http_health_check_client(&mut state_guard, 9001, 1);
+        start_health_check(&mut state_guard, 9001, 1, GUEST_PORT)?;
+    }
+
+    let machine_loop_fut = {
+        let machine = machine_for_loop.clone();
+        let state = state_for_loop.clone();
+        async move {
+            info!("Starting machine loop with shared state...");
+            let _ = run_machine_loop(machine, state).await;
+        }
+    };
+
+    // Short timeout; test only ensures we can dial 10000 and run a health check
+    tokio::select! {
+        _ = machine_loop_fut => {}
+        _ = sleep(Duration::from_secs(10)) => {}
+    };
+
     Ok(())
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use vsock::{VsockAddr, VsockStream};
+use vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
 use vsock_protocol::{
     Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW,
     VSOCK_OP_SHUTDOWN,
@@ -40,6 +40,7 @@ struct Connection {
 struct ConnectionManager {
     connections: HashMap<ConnectionKey, Connection>,
     cmio_driver: Arc<Mutex<CmioIoDriver>>,
+    listeners: HashMap<u32, VsockListener>,
 }
 
 impl ConnectionManager {
@@ -47,6 +48,7 @@ impl ConnectionManager {
         Self {
             connections: HashMap::new(),
             cmio_driver,
+            listeners: HashMap::new(),
         }
     }
 
@@ -112,6 +114,55 @@ impl ConnectionManager {
             _ => info!(target: "guest", "Received unhandled OP {} from CMIO. Ignoring.", hdr.op),
         }
 
+        Ok(())
+    }
+
+    fn add_listener(&mut self, port: u32) -> Result<(), Box<dyn Error>> {
+        if self.listeners.contains_key(&port) {
+            info!(target: "guest", "Listener already exists on port {}", port);
+            return Ok(());
+        }
+
+        let listener = VsockListener::bind(&VsockAddr::new(VMADDR_CID_ANY, port))?;
+        listener.set_nonblocking(true)?;
+        self.listeners.insert(port, listener);
+        info!(target: "guest", "Listening for vsock connections on port {}", port);
+        Ok(())
+    }
+
+    fn poll_vsock_listeners(&mut self) -> Result<(), Box<dyn Error>> {
+        // Accept any pending incoming connections and close immediately.
+        for (port, listener) in self.listeners.iter() {
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, addr)) => {
+                        info!(
+                            target: "guest",
+                            "Accepted vsock connection on port {} from {}:{}",
+                            port,
+                            addr.cid(),
+                            addr.port()
+                        );
+                        std::thread::spawn(move || {
+                            let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nOK";
+                            let _ = stream.write_all(response);
+                            let _ = stream.flush();
+                            let _ = stream.set_nonblocking(false);
+                        });
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                    Err(e) => {
+                        error!(
+                            target: "guest",
+                            "Error accepting connection on listener {}: {}",
+                            port,
+                            e
+                        );
+                        break;
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
@@ -282,16 +333,23 @@ fn create_reply_header(request_hdr: &VirtioVsockHdr, op: u16, len: u32) -> Virti
 pub fn run_agent(cmio_driver: Arc<Mutex<CmioIoDriver>>) -> Result<(), Box<dyn Error>> {
     info!(target: "guest", "GUEST AGENT STARTED");
     let mut manager = ConnectionManager::new(cmio_driver);
+    manager.add_listener(10000)?;
+    println!("GUEST AGENT: LISTENING ON PORT 10000");
+
 
     loop {
         if let Err(e) = manager.poll_vsock_connections() {
             error!(target: "guest", "Error polling vsock connections: {}", e);
         }
 
+        if let Err(e) = manager.poll_vsock_listeners() {
+            error!(target: "guest", "Error polling vsock listeners: {}", e);
+        }
+
         if let Err(e) = manager.poll_cmio() {
             error!(target: "guest", "Error polling CMIO: {}", e);
         }
-
+    
         thread::sleep(LOOP_SLEEP_DURATION);
     }
 }
